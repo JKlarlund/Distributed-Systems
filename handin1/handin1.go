@@ -32,7 +32,6 @@ func main() {
 
 func begin(p *P) {
 	for {
-
 		if p.eat == 3 {
 			break
 		}
@@ -42,7 +41,6 @@ func begin(p *P) {
 		} else {
 			fmt.Printf("Philosopher %d cannot eat\n", p.id)
 		}
-
 	}
 }
 
