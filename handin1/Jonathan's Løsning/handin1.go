@@ -15,9 +15,12 @@ type P struct {
 	wg        sync.WaitGroup
 }
 
+var wg sync.WaitGroup
+
 var forks [5](chan bool)
 
 func main() {
+	wg.Add(5)
 	for i := range forks {
 		forks[i] = make(chan bool, 1)
 		forks[i] <- true
@@ -27,10 +30,12 @@ func main() {
 		go begin(&(P{i, 0, make(chan bool, 2), forks[i], forks[i+1], sync.WaitGroup{}}))
 	}
 	begin(&P{4, 0, make(chan bool, 2), forks[4], forks[0], sync.WaitGroup{}})
+	wg.Wait()
 	fmt.Printf("All philosophers are full.")
 }
 
 func begin(p *P) {
+	defer wg.Done()
 	for {
 		if p.eat == 3 {
 			break
