@@ -6,86 +6,84 @@ import (
 	"time"
 )
 
-type P struct {
-	id        int
-	eat       int
-	canEat    chan bool
-	leftFork  chan bool
-	rightFork chan bool
-	wg        sync.WaitGroup
-}
+var forks [5]chan bool
+
+var isForkAvailable [5]chan bool
 
 var wg sync.WaitGroup
 
-var forks [5](chan bool)
+//The system does not deadlock as philosophers tries to pick up forks, and--
+//a) picks up both forks, eats, and passes them back through the forks channel, or--
+//b) picks up their left fork and passes it back through the fork channel.
+//The fork goroutines wait for the fork to be sent back before making it available once again.
+//A WaitGroup ensures that all philosophers have eaten three times before terminating the program.
 
 func main() {
-	wg.Add(5)
-	for i := range forks {
+	for i := range 5 {
 		forks[i] = make(chan bool, 1)
 		forks[i] <- true
+		isForkAvailable[i] = make(chan bool, 1)
+	}
+	for i := range 5 {
+		wg.Add(1)
+		go fork(i)
+		go philosopher(i)
 	}
 
-	for i := 0; i < 4; i++ {
-		go begin(&(P{i, 0, make(chan bool, 2), forks[i], forks[i+1], sync.WaitGroup{}}))
-	}
-	begin(&P{4, 0, make(chan bool, 2), forks[4], forks[0], sync.WaitGroup{}})
 	wg.Wait()
-	fmt.Printf("All philosophers are full.")
+	fmt.Printf("All philosophers have finished eating!\n")
 }
 
-func begin(p *P) {
-	defer wg.Done()
+func fork(id int) {
 	for {
-		if p.eat == 3 {
-			break
+		<-forks[id]
+		isForkAvailable[id] <- true
+	}
+}
+
+func philosopher(id int) {
+	defer wg.Done()
+	var eat int
+	leftfork := id
+	var rightfork int
+	if leftfork == 4 {
+		rightfork = 0
+	} else {
+		rightfork = leftfork + 1
+	}
+
+	for {
+		select {
+		case <-isForkAvailable[leftfork]:
+			select {
+			case <-isForkAvailable[rightfork]:
+				eat++
+				eating(id)
+				time.Sleep(1 * time.Second)
+
+				forks[leftfork] <- true
+				forks[rightfork] <- true
+				if eat == 3 {
+					fmt.Printf("%d is done eating...\n", id)
+					return
+				}
+			default:
+				thinking(id)
+				forks[leftfork] <- true
+
+			}
+		default:
+			thinking(id)
 		}
-
-		if tryToEat(p) {
-			fmt.Printf("Philosopher %d is eating\n", p.id)
-		} else {
-			fmt.Printf("Philosopher %d cannot eat\n", p.id)
-		}
 	}
 }
 
-func tryToEat(p *P) bool {
-	p.wg.Add(2)
-	go getLeft(p)
-	go getRight(p)
-	p.wg.Wait()
-	hasFirstFork := <-p.canEat
-	hasSecondFork := <-p.canEat
-	if hasFirstFork && hasSecondFork {
-		p.eat++
-		time.Sleep(3 * time.Second)
-		p.leftFork <- true
-		p.rightFork <- true
-		return true
-	} else if hasFirstFork && !hasSecondFork {
-		p.leftFork <- true
-	} else if !hasFirstFork && hasSecondFork {
-		p.rightFork <- true
-	}
-	time.Sleep(2 * time.Second)
-	return false
+func eating(id int) {
+	fmt.Printf("%d is eating...\n", id)
+	time.Sleep(1 * time.Second)
 }
 
-func getLeft(p *P) {
-	defer p.wg.Done()
-	select {
-	case <-p.leftFork:
-		p.canEat <- true
-	default:
-		p.canEat <- false
-	}
-}
-func getRight(p *P) {
-	defer p.wg.Done()
-	select {
-	case <-p.rightFork:
-		p.canEat <- true
-	default:
-		p.canEat <- false
-	}
+func thinking(id int) {
+	fmt.Printf("%d is thinking...\n", id)
+	time.Sleep(1 * time.Second)
 }
