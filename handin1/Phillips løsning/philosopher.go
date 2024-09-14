@@ -13,6 +13,12 @@ type Fork struct {
 }
 
 func main() {
+	// The program does not deadlock because:
+	// 1. Each fork has its own goroutine and channels to manage availability.
+	// 2. The forkManager ensures that a philosopher can only pick up both forks or none, preventing circular wait.
+	// 3. The resetForksChannel allows philosophers to signal when they are done eating, making forks available again.
+	// 4. The use of buffered channels ensures non-blocking communication between goroutines.
+	// 5. The main function waits for all philosophers to finish eating before terminating, ensuring all goroutines complete their tasks.
 	var philosophers = 5
 	var numForks = 5
 	var wg sync.WaitGroup
