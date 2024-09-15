@@ -45,12 +45,7 @@ func philosopher(id int) {
 	defer wg.Done()
 	var eat int
 	leftfork := id
-	var rightfork int
-	if leftfork == 4 {
-		rightfork = 0
-	} else {
-		rightfork = leftfork + 1
-	}
+	rightfork := (id + 1) % 5
 
 	for {
 		select {
