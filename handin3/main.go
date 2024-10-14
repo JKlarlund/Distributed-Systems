@@ -1,1 +1,7 @@
-package handin3
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Test me baby!")
+}
