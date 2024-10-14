@@ -2,3 +2,13 @@ syntax = "proto3";
 
 package chat;
 
+service ChatService {
+    rpc ChatStream(stream Message) returns (stream Message);
+}
+
+message Message {
+  string user = 1;
+  int32 timestamp = 2;
+  string body = 3;
+}
+
