@@ -129,5 +129,5 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "chat.proto",
+	Metadata: "protobufs/chat.proto",
 }

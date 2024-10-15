@@ -4,8 +4,10 @@ package chat;
 
 service ChatService {
 
-    
+
     rpc ChatStream(stream Message) returns (stream Message);
+  
+
 }
 
 message Message {
