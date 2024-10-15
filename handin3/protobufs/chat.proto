@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package main;
+package chat;
 
 service ChatService {
     rpc PublishMessage(Message) returns (Ack);

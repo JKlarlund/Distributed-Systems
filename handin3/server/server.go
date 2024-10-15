@@ -4,10 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 	"log"
 	"net"
 	"sync"
+
+	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
 
@@ -46,8 +47,8 @@ func (s *Server) Join(ctx context.Context, req *pb.Message) (*pb.JoinResponse, e
 	users[nextUserID] = newUser
 
 	return &pb.JoinResponse{
-		Message:   "User joined successfully",
-		Timestamp: int32(newUser.Clock.Time),
+		Message: "User joined successfully",
+		UserID:  nextUserID,
 	}, nil
 }
 
@@ -64,7 +65,7 @@ func main() {
 		Clock: chat.InitializeLClock(0, 0),
 	}
 
-	pb.RegisterChatServiceServer(server, chatServer)
+	pb.RegisterChatServiceServer(server, &chatServer.UnimplementedChatServiceServer)
 
 	log.Printf("Server is listening on port %d...", *port)
 
