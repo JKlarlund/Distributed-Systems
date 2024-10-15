@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 	"log"
 	"net"
 	"sync"
@@ -25,7 +24,6 @@ type Server struct {
 type User struct {
 	userID     int32
 	Connection pb.ChatServiceClient
-	Clock      *chat.LClock
 }
 
 var (
@@ -33,16 +31,26 @@ var (
 	mutex sync.Mutex
 )
 
-func (s *Server) Join(joinContext context.Context) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
+func (s *Server) Join(joinContext context.Context, joinRequest *pb.JoinRequest) (*pb.JoinResponse, error) {
 	nextUserID++
-	newUser := &User{
-		userID: nextUserID,
-		Clock:  chat.InitializeLClock(nextUserID, 0),
-	}
+	newUser := &User{userID: nextUserID}
 	users[nextUserID] = newUser
+
+	response := &pb.JoinResponse{
+		Message: "Welcome to the chat!",
+		UserID:  nextUserID, // Return the new user's ID
+	}
+
+	return response, nil
+}
+
+func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
+	for _, conn := range users {
+		conn.Connection.ReceiveMessage(context.Background(), message)
+	}
+
+	return &pb.Ack{Message: "Success"}, nil
+
 }
 
 func main() {
