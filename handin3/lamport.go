@@ -15,3 +15,15 @@ func initializeLClock(id int, currentTime int) *LClock {
 func (clock *LClock) step() {
 	clock.time++
 }
+
+func (clock *LClock) sendEvent() int {
+	clock.step()
+	return clock.time
+}
+
+func (clock *LClock) receiveEvent(receivedTime int) {
+	if receivedTime > clock.time {
+		clock.time = receivedTime
+	}
+	clock.step()
+}
