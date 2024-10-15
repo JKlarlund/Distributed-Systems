@@ -3,16 +3,38 @@ syntax = "proto3";
 package chat;
 
 service ChatService {
-
-
+    rpc PublishMessage(Message) returns (Ack);
     rpc ChatStream(stream Message) returns (stream Message);
-  
+    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Leave(LeaveRequest) returns (LeaveResponse);
 
 }
 
 message Message {
-  string user = 1;
-  int32 timestamp = 2;
-  string body = 3;
+    string user = 1;
+    int32 timestamp = 2;
+    string body = 3;
+}
+
+message Ack { // Acknowledgement
+    string message = 1;
+}
+
+message JoinRequest {
+    string user = 1;
+}
+
+message JoinResponse {
+    string message = 1;
+    int32 timestamp = 2;
+}
+
+message LeaveRequest {
+    string user = 1;
+}
+
+message LeaveResponse {
+    string message = 1;
+    int32 timestamp = 2;
 }
 
