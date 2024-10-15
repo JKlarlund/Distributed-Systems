@@ -1,4 +1,4 @@
-package chat
+package main
 
 import (
 	"flag"
@@ -27,6 +27,8 @@ func main() {
 	server := grpc.NewServer()
 
 	pb.RegisterChatServiceServer(server, &chatServiceServer{})
+
+	log.Printf("Server is listening on port %d...", *port)
 
 	server.Serve(listener)
 
