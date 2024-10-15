@@ -18,7 +18,10 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ChatServiceClient interface {
+	PublishMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
 	ChatStream(ctx context.Context, opts ...grpc.CallOption) (ChatService_ChatStreamClient, error)
+	Join(ctx context.Context, in *Message, opts ...grpc.CallOption) (*JoinResponse, error)
+	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
 }
 
 type chatServiceClient struct {
@@ -27,6 +30,15 @@ type chatServiceClient struct {
 
 func NewChatServiceClient(cc grpc.ClientConnInterface) ChatServiceClient {
 	return &chatServiceClient{cc}
+}
+
+func (c *chatServiceClient) PublishMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error) {
+	out := new(Ack)
+	err := c.cc.Invoke(ctx, "/chat.ChatService/PublishMessage", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *chatServiceClient) ChatStream(ctx context.Context, opts ...grpc.CallOption) (ChatService_ChatStreamClient, error) {
@@ -60,11 +72,32 @@ func (x *chatServiceChatStreamClient) Recv() (*Message, error) {
 	return m, nil
 }
 
+func (c *chatServiceClient) Join(ctx context.Context, in *Message, opts ...grpc.CallOption) (*JoinResponse, error) {
+	out := new(JoinResponse)
+	err := c.cc.Invoke(ctx, "/chat.ChatService/Join", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chatServiceClient) Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error) {
+	out := new(LeaveResponse)
+	err := c.cc.Invoke(ctx, "/chat.ChatService/Leave", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChatServiceServer is the server API for ChatService service.
 // All implementations must embed UnimplementedChatServiceServer
 // for forward compatibility
 type ChatServiceServer interface {
+	PublishMessage(context.Context, *Message) (*Ack, error)
 	ChatStream(ChatService_ChatStreamServer) error
+	Join(context.Context, *Message) (*JoinResponse, error)
+	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
 	mustEmbedUnimplementedChatServiceServer()
 }
 
@@ -72,8 +105,17 @@ type ChatServiceServer interface {
 type UnimplementedChatServiceServer struct {
 }
 
+func (UnimplementedChatServiceServer) PublishMessage(context.Context, *Message) (*Ack, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PublishMessage not implemented")
+}
 func (UnimplementedChatServiceServer) ChatStream(ChatService_ChatStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method ChatStream not implemented")
+}
+func (UnimplementedChatServiceServer) Join(context.Context, *Message) (*JoinResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
+}
+func (UnimplementedChatServiceServer) Leave(context.Context, *LeaveRequest) (*LeaveResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Leave not implemented")
 }
 func (UnimplementedChatServiceServer) mustEmbedUnimplementedChatServiceServer() {}
 
@@ -86,6 +128,24 @@ type UnsafeChatServiceServer interface {
 
 func RegisterChatServiceServer(s grpc.ServiceRegistrar, srv ChatServiceServer) {
 	s.RegisterService(&ChatService_ServiceDesc, srv)
+}
+
+func _ChatService_PublishMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Message)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatServiceServer).PublishMessage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/chat.ChatService/PublishMessage",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatServiceServer).PublishMessage(ctx, req.(*Message))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ChatService_ChatStream_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -114,13 +174,62 @@ func (x *chatServiceChatStreamServer) Recv() (*Message, error) {
 	return m, nil
 }
 
+func _ChatService_Join_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Message)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatServiceServer).Join(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/chat.ChatService/Join",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatServiceServer).Join(ctx, req.(*Message))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChatService_Leave_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LeaveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatServiceServer).Leave(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/chat.ChatService/Leave",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatServiceServer).Leave(ctx, req.(*LeaveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChatService_ServiceDesc is the grpc.ServiceDesc for ChatService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ChatService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "chat.ChatService",
 	HandlerType: (*ChatServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "PublishMessage",
+			Handler:    _ChatService_PublishMessage_Handler,
+		},
+		{
+			MethodName: "Join",
+			Handler:    _ChatService_Join_Handler,
+		},
+		{
+			MethodName: "Leave",
+			Handler:    _ChatService_Leave_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "ChatStream",

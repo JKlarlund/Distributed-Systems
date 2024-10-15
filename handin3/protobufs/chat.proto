@@ -5,7 +5,7 @@ package chat;
 service ChatService {
     rpc PublishMessage(Message) returns (Ack);
     rpc ChatStream(stream Message) returns (stream Message);
-    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Join(Message) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
 
 }
@@ -21,7 +21,7 @@ message Ack { // Acknowledgement
 }
 
 message JoinRequest {
-    string user = 1;
+    int32 userID = 1;
 }
 
 message JoinResponse {

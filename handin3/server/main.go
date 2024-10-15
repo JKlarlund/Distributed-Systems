@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
 
@@ -13,8 +15,27 @@ import (
 
 var port *int = flag.Int("Port", 1337, "Server Port")
 
-type chatServiceServer struct {
+var nextUserID int32 = 0
+
+type Server struct {
 	pb.UnimplementedChatServiceServer
+}
+
+type User struct {
+	userID     int32
+	Connection pb.ChatServiceClient
+}
+
+var (
+	users = make(map[int32]*User)
+	mutex sync.Mutex
+)
+
+func (s *Server) JoinRequest(joinContext context.Context) {
+	nextUserID++
+	newUser := &User{userID: nextUserID}
+	users[nextUserID] = newUser
+
 }
 
 func main() {
@@ -26,7 +47,7 @@ func main() {
 
 	server := grpc.NewServer()
 
-	pb.RegisterChatServiceServer(server, &chatServiceServer{})
+	pb.RegisterChatServiceServer(server, &Server{})
 
 	log.Printf("Server is listening on port %d...", *port)
 
