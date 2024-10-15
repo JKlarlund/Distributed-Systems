@@ -31,7 +31,7 @@ var (
 	mutex sync.Mutex
 )
 
-func (s *Server) JoinRequest(joinContext context.Context) {
+func (s *Server) Join(joinContext context.Context) {
 	nextUserID++
 	newUser := &User{userID: nextUserID}
 	users[nextUserID] = newUser
