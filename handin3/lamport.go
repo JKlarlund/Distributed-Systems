@@ -1,11 +1,11 @@
 package chat
 
 type LClock struct {
-	id   int
+	id   int32
 	time int
 }
 
-func initializeLClock(id int, currentTime int) *LClock {
+func InitializeLClock(id int32, currentTime int) *LClock {
 	return &LClock{
 		id:   id,
 		time: currentTime,

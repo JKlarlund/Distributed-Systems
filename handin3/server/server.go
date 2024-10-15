@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 	"log"
 	"net"
 	"sync"
@@ -24,6 +25,7 @@ type Server struct {
 type User struct {
 	userID     int32
 	Connection pb.ChatServiceClient
+	Clock      *chat.LClock
 }
 
 var (
@@ -32,10 +34,15 @@ var (
 )
 
 func (s *Server) Join(joinContext context.Context) {
-	nextUserID++
-	newUser := &User{userID: nextUserID}
-	users[nextUserID] = newUser
+	mutex.Lock()
+	defer mutex.Unlock()
 
+	nextUserID++
+	newUser := &User{
+		userID: nextUserID,
+		Clock:  chat.InitializeLClock(nextUserID, 0),
+	}
+	users[nextUserID] = newUser
 }
 
 func main() {
