@@ -3,6 +3,8 @@ syntax = "proto3";
 package chat;
 
 service ChatService {
+
+    
     rpc ChatStream(stream Message) returns (stream Message);
 }
 
