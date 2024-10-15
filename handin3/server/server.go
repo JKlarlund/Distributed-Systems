@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sync"
 
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
 
@@ -15,11 +14,7 @@ import (
 var port *int = flag.Int("Port", 1337, "Server Port")
 
 type chatServiceServer struct {
-	pb.UnimplementedRouteGuideServer
-	savedFeatures []*pb.Feature // read-only after initialized
-
-	mu         sync.Mutex // protects routeNotes
-	routeNotes map[string][]*pb.RouteNote
+	pb.UnimplementedChatServiceServer
 }
 
 func main() {
@@ -31,13 +26,8 @@ func main() {
 
 	server := grpc.NewServer()
 
-	pb.RegisterChatServiceServer(server, newServer())
+	pb.RegisterChatServiceServer(server, &chatServiceServer{})
 
 	server.Serve(listener)
 
-}
-
-func newServer() *chatServiceServer {
-	s := &chatServiceServer{routeNotes: make(map[string][]*pb.RouteNote)}
-	return s
 }
