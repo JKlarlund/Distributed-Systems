@@ -52,6 +52,15 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	}, nil
 }
 
+func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
+	for _, conn := range users {
+		conn.Connection.ReceiveMessage(context.Background(), message)
+	}
+
+	return &pb.Ack{Message: "Success"}, nil
+
+}
+
 func main() {
 	flag.Parse()
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
