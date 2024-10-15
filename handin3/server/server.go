@@ -9,9 +9,7 @@ import (
 	"sync"
 
 	chat "github.com/JKlarlund/Distributed-Systems/handin3"
-
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
-
 	"google.golang.org/grpc"
 )
 
@@ -35,7 +33,7 @@ var (
 	mutex sync.Mutex
 )
 
-func (s *Server) Join(ctx context.Context, req *pb.Message) (*pb.JoinResponse, error) {
+func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -45,6 +43,8 @@ func (s *Server) Join(ctx context.Context, req *pb.Message) (*pb.JoinResponse, e
 		Clock:  chat.InitializeLClock(nextUserID, 0),
 	}
 	users[nextUserID] = newUser
+
+	fmt.Printf("User %d joined the chat\n", nextUserID)
 
 	return &pb.JoinResponse{
 		Message: "User joined successfully",
@@ -65,10 +65,9 @@ func main() {
 		Clock: chat.InitializeLClock(0, 0),
 	}
 
-	pb.RegisterChatServiceServer(server, &chatServer.UnimplementedChatServiceServer)
+	pb.RegisterChatServiceServer(server, chatServer)
 
 	log.Printf("Server is listening on port %d...", *port)
 
 	server.Serve(listener)
-
 }
