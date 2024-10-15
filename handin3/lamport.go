@@ -2,28 +2,28 @@ package chat
 
 type LClock struct {
 	id   int32
-	time int
+	Time int
 }
 
 func InitializeLClock(id int32, currentTime int) *LClock {
 	return &LClock{
 		id:   id,
-		time: currentTime,
+		Time: currentTime,
 	}
 }
 
 func (clock *LClock) step() {
-	clock.time++
+	clock.Time++
 }
 
 func (clock *LClock) sendEvent() int {
 	clock.step()
-	return clock.time
+	return clock.Time
 }
 
 func (clock *LClock) receiveEvent(receivedTime int) {
-	if receivedTime > clock.time {
-		clock.time = receivedTime
+	if receivedTime > clock.Time {
+		clock.Time = receivedTime
 	}
 	clock.step()
 }

@@ -20,6 +20,7 @@ var nextUserID int32 = 0
 
 type Server struct {
 	pb.UnimplementedChatServiceServer
+	Clock *chat.LClock
 }
 
 type User struct {
@@ -33,7 +34,7 @@ var (
 	mutex sync.Mutex
 )
 
-func (s *Server) Join(joinContext context.Context) {
+func (s *Server) Join(ctx context.Context, req *pb.Message) (*pb.JoinResponse, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -43,6 +44,11 @@ func (s *Server) Join(joinContext context.Context) {
 		Clock:  chat.InitializeLClock(nextUserID, 0),
 	}
 	users[nextUserID] = newUser
+
+	return &pb.JoinResponse{
+		Message:   "User joined successfully",
+		Timestamp: int32(newUser.Clock.Time),
+	}, nil
 }
 
 func main() {
@@ -54,7 +60,11 @@ func main() {
 
 	server := grpc.NewServer()
 
-	pb.RegisterChatServiceServer(server, &Server{})
+	chatServer := &Server{
+		Clock: chat.InitializeLClock(0, 0),
+	}
+
+	pb.RegisterChatServiceServer(server, chatServer)
 
 	log.Printf("Server is listening on port %d...", *port)
 
