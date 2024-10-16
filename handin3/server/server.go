@@ -55,12 +55,12 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
 	for _, conn := range users {
-		err := conn.Connection.Send(message)
-		if err != nil {
-			log.Printf("Failed to send message to a user.\n")
+		if conn.userID != message.UserID {
+			err := conn.Connection.Send(message)
+			if err != nil {
+				log.Printf("Failed to send message to a user.\n")
+			}
 		}
 	}
 

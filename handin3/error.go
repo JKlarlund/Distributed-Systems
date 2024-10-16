@@ -18,6 +18,6 @@ func HandleFatalError(err error) {
 	if err != nil {
 		fmt.Println("Fatal error encountered")
 		fmt.Println(err.Error())
-		log.Fatalf(err.Error())
+		//log.Fatalf(err.Error())
 	}
 }
