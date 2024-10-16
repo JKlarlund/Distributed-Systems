@@ -78,7 +78,7 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 			if in.UserID == 0 {
 				fmt.Printf("\033[1;34m[Server] %s\033[0m\n", in.Body)
 			} else {
-				fmt.Printf("%v: %s\n", in.UserID, in.Body)
+				fmt.Printf("User %v: %s\n", in.UserID, in.Body)
 			}
 
 		}
