@@ -10,6 +10,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+func ReceiveMessage(messageContext context.Context, msg *pb.Message) (*pb.Ack, error) {
+
+	fmt.Printf("User %d has sent message %s at timestamp %d", msg.UserID, msg.Body, msg.Timestamp)
+
+	return &pb.Ack{Message: "success"}, nil
+}
+
 func main() {
 	// Set up a connection to the server with context timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -38,6 +45,15 @@ func main() {
 
 	fmt.Printf("Success! You are user %d.\n", res.UserID)
 
+	stream, err := client.ChatStream(context.Background())
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	go listen(stream)
+
 	var input string
 	_, err = fmt.Scan(&input)
 	if err != nil {
@@ -45,4 +61,15 @@ func main() {
 	}
 
 	client.PublishMessage(context.Background(), &pb.Message{UserID: res.UserID, Timestamp: 1, Body: input})
+}
+
+func listen(stream pb.ChatService_ChatStreamClient) {
+	for {
+		in, err := stream.Recv()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println(in)
+	}
 }

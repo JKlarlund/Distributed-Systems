@@ -37,30 +37,40 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	nextUserID++
-
-	s.Clock.Step()
-
 	newUser := &User{
 		userID: nextUserID,
 		Clock:  chat.InitializeLClock(nextUserID, s.Clock.Time),
 	}
 	users[nextUserID] = newUser
-
+	s.Clock.Step()
 	fmt.Printf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, newUser.Clock.Time)
-
+	nextUserID++
 	return &pb.JoinResponse{
 		Message: "User joined successfully",
-		UserID:  nextUserID,
+		UserID:  nextUserID - 1,
 	}, nil
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
 	for _, conn := range users {
-		conn.Connection.ReceiveMessage(context.Background(), message)
+		conn.Connection.ReceiveMessage(joinContext, message)
 	}
 
 	return &pb.Ack{Message: "Success"}, nil
+
+}
+
+func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
+	for {
+
+		msg, err := stream.Recv()
+		if err != nil {
+			fmt.Println(err)
+			return err
+
+		}
+		fmt.Println(msg)
+	}
 
 }
 
