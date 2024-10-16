@@ -34,9 +34,6 @@ var (
 )
 
 func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinResponse, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	newUser := &User{
 		userID: nextUserID,
 	}
@@ -75,20 +72,19 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 	for {
 
 		msg, err := stream.Recv()
-		if err != nil {
-			return err
+		if msg == nil {
+			return fmt.Errorf("received nil message")
 		}
+		chat.HandleError(err)
 
+		fmt.Printf("user id is: %d", msg.UserID)
 		sender := users[msg.UserID]
 		if sender.Connection == nil {
 			sender.Connection = stream
 		}
 
 		_, err = s.PublishMessage(context.Background(), msg)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
+		chat.HandleFatalError(err)
 	}
 
 }

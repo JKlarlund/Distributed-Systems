@@ -59,9 +59,20 @@ func main() {
 func listen(stream pb.ChatService_ChatStreamClient) {
 	for {
 		in, err := stream.Recv()
-		chat.HandleFatalError(err)
-		user.Clock.ReceiveEvent(in.Timestamp)
-		fmt.Println(in)
+		if err != nil {
+			if err == io.EOF {
+				fmt.Println("Server closed the stream.")
+				return
+			}
+			log.Printf("Error while receiving message: %v", err)
+			return
+		}
+
+		// Process the incoming message
+		if in != nil {
+			user.Clock.ReceiveEvent(in.Timestamp)
+			fmt.Printf("Received message: %s\n", in.Body)
+		}
 	}
 }
 
