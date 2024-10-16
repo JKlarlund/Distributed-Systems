@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 type ChatServiceClient interface {
 	PublishMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
 	ReceiveMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
+	ChatStream(ctx context.Context, opts ...grpc.CallOption) (ChatService_ChatStreamClient, error)
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
 }
@@ -50,6 +51,37 @@ func (c *chatServiceClient) ReceiveMessage(ctx context.Context, in *Message, opt
 	return out, nil
 }
 
+func (c *chatServiceClient) ChatStream(ctx context.Context, opts ...grpc.CallOption) (ChatService_ChatStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ChatService_ServiceDesc.Streams[0], "/chat.ChatService/ChatStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &chatServiceChatStreamClient{stream}
+	return x, nil
+}
+
+type ChatService_ChatStreamClient interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ClientStream
+}
+
+type chatServiceChatStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *chatServiceChatStreamClient) Send(m *Message) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *chatServiceChatStreamClient) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *chatServiceClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error) {
 	out := new(JoinResponse)
 	err := c.cc.Invoke(ctx, "/chat.ChatService/Join", in, out, opts...)
@@ -74,6 +106,7 @@ func (c *chatServiceClient) Leave(ctx context.Context, in *LeaveRequest, opts ..
 type ChatServiceServer interface {
 	PublishMessage(context.Context, *Message) (*Ack, error)
 	ReceiveMessage(context.Context, *Message) (*Ack, error)
+	ChatStream(ChatService_ChatStreamServer) error
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
 	mustEmbedUnimplementedChatServiceServer()
@@ -88,6 +121,9 @@ func (UnimplementedChatServiceServer) PublishMessage(context.Context, *Message) 
 }
 func (UnimplementedChatServiceServer) ReceiveMessage(context.Context, *Message) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReceiveMessage not implemented")
+}
+func (UnimplementedChatServiceServer) ChatStream(ChatService_ChatStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method ChatStream not implemented")
 }
 func (UnimplementedChatServiceServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
@@ -142,6 +178,32 @@ func _ChatService_ReceiveMessage_Handler(srv interface{}, ctx context.Context, d
 		return srv.(ChatServiceServer).ReceiveMessage(ctx, req.(*Message))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _ChatService_ChatStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ChatServiceServer).ChatStream(&chatServiceChatStreamServer{stream})
+}
+
+type ChatService_ChatStreamServer interface {
+	Send(*Message) error
+	Recv() (*Message, error)
+	grpc.ServerStream
+}
+
+type chatServiceChatStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *chatServiceChatStreamServer) Send(m *Message) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *chatServiceChatStreamServer) Recv() (*Message, error) {
+	m := new(Message)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func _ChatService_Join_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -204,6 +266,13 @@ var ChatService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ChatService_Leave_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ChatStream",
+			Handler:       _ChatService_ChatStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "protobufs/chat.proto",
 }
