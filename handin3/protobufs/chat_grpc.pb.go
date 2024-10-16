@@ -7,6 +7,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -21,7 +22,7 @@ type ChatServiceClient interface {
 	PublishMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
 	ReceiveMessage(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Ack, error)
 	ChatStream(ctx context.Context, opts ...grpc.CallOption) (ChatService_ChatStreamClient, error)
-	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
+	Join(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*JoinResponse, error)
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
 }
 
@@ -82,7 +83,7 @@ func (x *chatServiceChatStreamClient) Recv() (*Message, error) {
 	return m, nil
 }
 
-func (c *chatServiceClient) Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error) {
+func (c *chatServiceClient) Join(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*JoinResponse, error) {
 	out := new(JoinResponse)
 	err := c.cc.Invoke(ctx, "/chat.ChatService/Join", in, out, opts...)
 	if err != nil {
@@ -107,7 +108,7 @@ type ChatServiceServer interface {
 	PublishMessage(context.Context, *Message) (*Ack, error)
 	ReceiveMessage(context.Context, *Message) (*Ack, error)
 	ChatStream(ChatService_ChatStreamServer) error
-	Join(context.Context, *JoinRequest) (*JoinResponse, error)
+	Join(context.Context, *emptypb.Empty) (*JoinResponse, error)
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
 	mustEmbedUnimplementedChatServiceServer()
 }
@@ -125,7 +126,7 @@ func (UnimplementedChatServiceServer) ReceiveMessage(context.Context, *Message) 
 func (UnimplementedChatServiceServer) ChatStream(ChatService_ChatStreamServer) error {
 	return status.Errorf(codes.Unimplemented, "method ChatStream not implemented")
 }
-func (UnimplementedChatServiceServer) Join(context.Context, *JoinRequest) (*JoinResponse, error) {
+func (UnimplementedChatServiceServer) Join(context.Context, *emptypb.Empty) (*JoinResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Join not implemented")
 }
 func (UnimplementedChatServiceServer) Leave(context.Context, *LeaveRequest) (*LeaveResponse, error) {
@@ -207,7 +208,7 @@ func (x *chatServiceChatStreamServer) Recv() (*Message, error) {
 }
 
 func _ChatService_Join_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(JoinRequest)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -219,7 +220,7 @@ func _ChatService_Join_Handler(srv interface{}, ctx context.Context, dec func(in
 		FullMethod: "/chat.ChatService/Join",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ChatServiceServer).Join(ctx, req.(*JoinRequest))
+		return srv.(ChatServiceServer).Join(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
