@@ -1,14 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
 	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"io"
-	"log"
 )
 
 type User struct {
@@ -27,28 +32,28 @@ func main() {
 		log.Fatalf("User connection failed: %v", err)
 	}
 
-	//sigs := make(chan os.Signal, 1)
-	//signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	client := pb.NewChatServiceClient(conn)
 
 	// Send the JoinRequest to the server.
 	//ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	response, err := client.Join(context.Background(), &emptypb.Empty{})
-	chat.HandleFatalError(err)
+	stream, err := client.ChatStream(context.Background())
 
+	chat.HandleFatalError(err)
 	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
+
+	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: response.Message})
 
 	fmt.Printf("Success! You are user %d.\n", user.ID)
 
-	stream, err := client.ChatStream(context.Background())
 	chat.HandleFatalError(err)
-	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: ""})
-
 	go listen(stream)
-	readInput(stream)
+	go readInput(stream)
 
-	//<-sigs
+	<-sigs
 
 	stream.CloseSend()
 	fmt.Println("You have now exited the chat application")
@@ -75,11 +80,10 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 }
 
 func readInput(stream pb.ChatService_ChatStreamClient) {
-	var input string
-	_, err := fmt.Scan(&input)
-	chat.HandleError(err)
-
-	err = stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: input})
-	chat.HandleFatalError(err)
-
+	for {
+		reader := bufio.NewReader(os.Stdin)
+		message, err := reader.ReadString('\n')
+		err = stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: message})
+		chat.HandleFatalError(err)
+	}
 }

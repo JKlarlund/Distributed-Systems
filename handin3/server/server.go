@@ -4,13 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
 	"net"
 	"sync"
 
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	chat "github.com/JKlarlund/Distributed-Systems/handin3"
+
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
+
 	"google.golang.org/grpc"
 )
 
@@ -41,27 +44,21 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 	updatedTime := s.Clock.SendEvent()
 
 	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
-	joinAnnouncement := &pb.Message{UserID: nextUserID, Timestamp: updatedTime, Body: joinMessage}
 
-	_, err := s.PublishMessage(context.Background(), joinAnnouncement)
-	if err != nil {
-		log.Printf("Failed to publish join message")
-	}
 	nextUserID++
 	return &pb.JoinResponse{
-		Message: "User joined successfully",
+		Message: joinMessage,
 		UserID:  nextUserID - 1,
 	}, nil
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
 	for _, conn := range users {
-		if conn.userID != message.UserID {
-			err := conn.Connection.Send(message)
-			if err != nil {
-				log.Printf("Failed to send message to a user.\n")
-			}
+		err := conn.Connection.Send(message)
+		if err != nil {
+			log.Printf("Failed to send message to a user.\n")
 		}
+
 	}
 
 	return &pb.Ack{Message: "Success"}, nil
@@ -77,7 +74,6 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 		}
 		chat.HandleError(err)
 
-		fmt.Printf("user id is: %d", msg.UserID)
 		sender := users[msg.UserID]
 		if sender.Connection == nil {
 			sender.Connection = stream
