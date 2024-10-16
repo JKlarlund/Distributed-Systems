@@ -36,19 +36,17 @@ func main() {
 
 	client := pb.NewChatServiceClient(conn)
 
-	// Create a JoinRequest message.
 	// Send the JoinRequest to the server.
-	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	//ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+	response, err := client.Join(context.Background())
+	chat.HandleFatalError(err)
+
+	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
+
+	fmt.Printf("Success! You are user %d.\n", user.ID)
 
 	stream, err := client.ChatStream(context.Background())
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	stream.Send(&pb.Message{UserID: -1, Timestamp: 1, Body: "xd"})
+	chat.HandleFatalError(err)
 
 	go listen(stream)
 
@@ -71,11 +69,8 @@ func main() {
 func listen(stream pb.ChatService_ChatStreamClient) {
 	for {
 		in, err := stream.Recv()
-		if err != nil {
-			fmt.Println("This is the error")
-			fmt.Println(err)
-			return
-		}
+		chat.HandleFatalError(err)
+		user.Clock.ReceiveEvent(in.Timestamp)
 		fmt.Println(in)
 	}
 }

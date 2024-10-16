@@ -63,8 +63,6 @@ func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message
 func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 	for {
 
-		var UserID int32
-
 		msg, err := stream.Recv()
 		if err != nil {
 			fmt.Println(err)
@@ -72,26 +70,16 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 
 		}
 
-		if msg.UserID == -1 {
-			mutex.Lock()
-
-			newUser := &User{
-				userID:     UserID,
-				Connection: stream, // Store the stream for this user
-				Clock:      chat.InitializeLClock(UserID, 0),
-			}
-
-			fmt.Println("This is called!")
-
-			UserID = nextUserID
-			users[UserID] = newUser
-			nextUserID++
-			mutex.Unlock()
+		sender := users[msg.UserID]
+		if sender.Connection == nil {
+			sender.Connection = stream
 		}
 
-		fmt.Println(msg)
-
-		s.PublishMessage(context.Background(), msg)
+		_, err = s.PublishMessage(context.Background(), msg)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
 	}
 
 }
