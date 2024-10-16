@@ -4,16 +4,15 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	chat "github.com/JKlarlund/Distributed-Systems/handin3"
+	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-
-	chat "github.com/JKlarlund/Distributed-Systems/handin3"
-	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type User struct {
@@ -24,9 +23,6 @@ type User struct {
 var user User
 
 func main() {
-	// Set up a connection to the server with context timeout.
-	//ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//defer cancel()
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("User connection failed: %v", err)
@@ -37,20 +33,24 @@ func main() {
 
 	client := pb.NewChatServiceClient(conn)
 
-	// Send the JoinRequest to the server.
-	//ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	fmt.Println("Connecting...")
 	response, err := client.Join(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		log.Fatalf("Connection failed: %v", err)
+	}
 	stream, err := client.ChatStream(context.Background())
-
+	if err == nil {
+		fmt.Println("Connection established as user")
+	}
 	chat.HandleFatalError(err)
 	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
+	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: "Connection has been established"})
+	//stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: response.Message})
 
-	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: response.Message})
-
-	fmt.Printf("Success! You are user %d.\n", user.ID)
+	go listen(stream)
 
 	chat.HandleFatalError(err)
-	go listen(stream)
+
 	go readInput(stream)
 
 	<-sigs
@@ -74,7 +74,13 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 		// Process the incoming message
 		if in != nil {
 			user.Clock.ReceiveEvent(in.Timestamp)
-			fmt.Printf("Received message: %s\n", in.Body)
+			// Check for server message
+			if in.UserID == 0 {
+				fmt.Printf("\033[1;34m[Server] %s\033[0m\n", in.Body)
+			} else {
+				fmt.Printf("%v: %s\n", in.UserID, in.Body)
+			}
+
 		}
 	}
 }

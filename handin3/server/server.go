@@ -19,7 +19,8 @@ import (
 
 var port *int = flag.Int("Port", 1337, "Server Port")
 
-var nextUserID int32 = 0
+var nextUserID int32 = 1
+var serverUserID int32 = 0
 
 type Server struct {
 	pb.UnimplementedChatServiceServer
@@ -41,20 +42,19 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 		userID: nextUserID,
 	}
 	users[nextUserID] = newUser
-	updatedTime := s.Clock.SendEvent()
 
-	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
-
-	nextUserID++
 	return &pb.JoinResponse{
-		Message: joinMessage,
-		UserID:  nextUserID - 1,
+		Message: "Ack",
+		UserID:  nextUserID,
 	}, nil
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
-	for _, conn := range users {
-		err := conn.Connection.Send(message)
+	for _, user := range users {
+		if user.userID == message.UserID || user.userID == serverUserID {
+			continue
+		}
+		err := user.Connection.Send(message)
 		if err != nil {
 			log.Printf("Failed to send message to a user.\n")
 		}
@@ -66,23 +66,36 @@ func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message
 }
 
 func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
-	for {
+	// Set up the user's connection immediately
+	msg, err := stream.Recv()
+	if msg == nil {
+		return fmt.Errorf("received nil message")
+	}
+	chat.HandleError(err)
 
+	sender := users[msg.UserID]
+	if sender.Connection == nil {
+		sender.Connection = stream
+	}
+
+	updatedTime := s.Clock.SendEvent()
+
+	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
+
+	s.PublishMessage(context.Background(), &pb.Message{UserID: 0, Timestamp: updatedTime, Body: joinMessage})
+
+	nextUserID++
+	// Now enter the loop to listen for new messages
+	for {
 		msg, err := stream.Recv()
 		if msg == nil {
 			return fmt.Errorf("received nil message")
 		}
 		chat.HandleError(err)
 
-		sender := users[msg.UserID]
-		if sender.Connection == nil {
-			sender.Connection = stream
-		}
-
 		_, err = s.PublishMessage(context.Background(), msg)
 		chat.HandleFatalError(err)
 	}
-
 }
 
 func main() {
@@ -96,6 +109,11 @@ func main() {
 
 	chatServer := &Server{
 		Clock: chat.InitializeLClock(0, 0),
+	}
+
+	// We register the server as user 0 for admin purposes
+	users[0] = &User{
+		userID: 0,
 	}
 
 	pb.RegisterChatServiceServer(server, chatServer)
