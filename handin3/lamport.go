@@ -12,12 +12,12 @@ func InitializeLClock(id int32, currentTime int) *LClock {
 	}
 }
 
-func (clock *LClock) step() {
+func (clock *LClock) Step() {
 	clock.Time++
 }
 
 func (clock *LClock) sendEvent() int {
-	clock.step()
+	clock.Step()
 	return clock.Time
 }
 
@@ -25,5 +25,5 @@ func (clock *LClock) receiveEvent(receivedTime int) {
 	if receivedTime > clock.Time {
 		clock.Time = receivedTime
 	}
-	clock.step()
+	clock.Step()
 }
