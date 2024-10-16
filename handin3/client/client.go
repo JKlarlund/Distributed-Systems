@@ -10,6 +10,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+func ReceiveMessage(messageContext context.Context, msg *pb.Message) (*pb.Ack, error) {
+
+	fmt.Printf("User %d has sent message %s at timestamp %d", msg.UserID, msg.Body, msg.Timestamp)
+
+	return &pb.Ack{Message: "success"}, nil
+}
+
 func main() {
 	// Set up a connection to the server with context timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

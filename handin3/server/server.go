@@ -38,9 +38,15 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	defer mutex.Unlock()
 
 	nextUserID++
+	conn, err := grpc.Dial("localhost:1337", grpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to server: %v", err)
+	}
+
 	newUser := &User{
-		userID: nextUserID,
-		Clock:  chat.InitializeLClock(nextUserID, 0),
+		userID:     nextUserID,
+		Connection: pb.NewChatServiceClient(conn),
+		Clock:      chat.InitializeLClock(nextUserID, 0),
 	}
 	users[nextUserID] = newUser
 
@@ -53,8 +59,14 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	for _, conn := range users {
-		conn.Connection.ReceiveMessage(context.Background(), message)
+		_, err := conn.Connection.PublishMessage(context.Background(), message)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send message to user %d: %v", conn.userID, err)
+		}
 	}
 
 	return &pb.Ack{Message: "Success"}, nil
