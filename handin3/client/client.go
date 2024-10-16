@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	chat "github.com/JKlarlund/Distributed-Systems/handin3"
 	"log"
 	"os"
 	"os/signal"
@@ -13,12 +14,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-func ReceiveMessage(messageContext context.Context, msg *pb.Message) (*pb.Ack, error) {
-
-	fmt.Printf("User %d has sent message %s at timestamp %d", msg.UserID, msg.Body, msg.Timestamp)
-
-	return &pb.Ack{Message: "success"}, nil
+type User struct {
+	ID    int32
+	Clock *chat.LClock
 }
+
+var user User
 
 func main() {
 	// Set up a connection to the server with context timeout.
@@ -49,16 +50,7 @@ func main() {
 	chat.HandleFatalError(err)
 
 	go listen(stream)
-
-	for {
-		var input string
-		_, err = fmt.Scan(&input)
-		if err != nil {
-			return
-		}
-
-		stream.Send(&pb.Message{UserID: 100, Timestamp: 1, Body: input})
-	}
+	go readInput(stream)
 
 	<-sigs
 
@@ -72,5 +64,16 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 		chat.HandleFatalError(err)
 		user.Clock.ReceiveEvent(in.Timestamp)
 		fmt.Println(in)
+	}
+}
+
+func readInput(stream pb.ChatService_ChatStreamClient) {
+	for {
+		var input string
+		_, err := fmt.Scan(&input)
+		chat.HandleError(err)
+
+		err = stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: input})
+		chat.HandleFatalError(err)
 	}
 }

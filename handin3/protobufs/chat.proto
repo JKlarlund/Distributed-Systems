@@ -2,13 +2,14 @@ syntax = "proto3";
 
 package chat;
 
+import "google/protobuf/empty.proto";
+
 service ChatService {
     rpc PublishMessage(Message) returns (Ack);
     rpc ReceiveMessage(Message) returns (Ack);
     rpc ChatStream(stream Message) returns (stream Message);
-    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Join(google.protobuf.Empty) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
-
 }
 
 message Message {
@@ -19,10 +20,6 @@ message Message {
 
 message Ack { // Acknowledgement
     string message = 1;
-}
-
-message JoinRequest {
-    int32 userID = 1;
 }
 
 message JoinResponse {

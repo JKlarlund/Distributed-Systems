@@ -25,7 +25,6 @@ type Server struct {
 type User struct {
 	userID     int32
 	Connection pb.ChatService_ChatStreamServer
-	Clock      *chat.LClock
 }
 
 var (
@@ -39,11 +38,17 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 
 	newUser := &User{
 		userID: nextUserID,
-		Clock:  chat.InitializeLClock(nextUserID, s.Clock.Time),
 	}
 	users[nextUserID] = newUser
-	s.Clock.Step()
-	fmt.Printf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, newUser.Clock.Time)
+	updatedTime := s.Clock.SendEvent()
+
+	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
+	joinAnnouncement := &pb.Message{UserID: nextUserID, Timestamp: updatedTime, Body: joinMessage}
+
+	_, err := s.PublishMessage(context.Background(), joinAnnouncement)
+	if err != nil {
+		log.Printf("Failed to publish join message")
+	}
 	nextUserID++
 	return &pb.JoinResponse{
 		Message: "User joined successfully",
@@ -52,8 +57,13 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 }
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
 	for _, conn := range users {
-		conn.Connection.Send(message)
+		err := conn.Connection.Send(message)
+		if err != nil {
+			log.Printf("Failed to send message to a user.\n")
+		}
 	}
 
 	return &pb.Ack{Message: "Success"}, nil
@@ -65,9 +75,7 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 
 		msg, err := stream.Recv()
 		if err != nil {
-			fmt.Println(err)
 			return err
-
 		}
 
 		sender := users[msg.UserID]
