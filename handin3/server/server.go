@@ -82,7 +82,7 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 
 	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
 
-	s.PublishMessage(context.Background(), &pb.Message{UserID: 0, Timestamp: updatedTime, Body: joinMessage})
+	s.PublishMessage(context.Background(), &pb.Message{UserID: serverUserID, Timestamp: updatedTime, Body: joinMessage})
 
 	nextUserID++
 	// Now enter the loop to listen for new messages
