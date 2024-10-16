@@ -38,13 +38,16 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	defer mutex.Unlock()
 
 	nextUserID++
+
+	s.Clock.Step()
+
 	newUser := &User{
 		userID: nextUserID,
-		Clock:  chat.InitializeLClock(nextUserID, 0),
+		Clock:  chat.InitializeLClock(nextUserID, s.Clock.Time),
 	}
 	users[nextUserID] = newUser
 
-	fmt.Printf("User %d joined the chat\n", nextUserID)
+	fmt.Printf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, newUser.Clock.Time)
 
 	return &pb.JoinResponse{
 		Message: "User joined successfully",
