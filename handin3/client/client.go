@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
@@ -28,6 +31,9 @@ func main() {
 	}
 	defer conn.Close()
 
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	client := pb.NewChatServiceClient(conn)
 
 	// Create a JoinRequest message.
@@ -46,13 +52,20 @@ func main() {
 
 	go listen(stream)
 
-	var input string
-	_, err = fmt.Scan(&input)
-	if err != nil {
-		return
+	for {
+		var input string
+		_, err = fmt.Scan(&input)
+		if err != nil {
+			return
+		}
+
+		stream.Send(&pb.Message{UserID: 100, Timestamp: 1, Body: input})
 	}
 
-	stream.Send(&pb.Message{UserID: 100, Timestamp: 1, Body: input})
+	<-sigs
+
+	stream.CloseSend()
+	fmt.Println("You have now exited the chat application")
 }
 
 func listen(stream pb.ChatService_ChatStreamClient) {
