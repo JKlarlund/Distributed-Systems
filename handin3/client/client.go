@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	chat "github.com/JKlarlund/Distributed-Systems/handin3"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	pb "github.com/JKlarlund/Distributed-Systems/handin3/protobufs"
@@ -32,27 +30,27 @@ func main() {
 	}
 	defer conn.Close()
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	//sigs := make(chan os.Signal, 1)
+	//signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	client := pb.NewChatServiceClient(conn)
 
 	// Send the JoinRequest to the server.
-	//ctx, cancel = context.WithTimeout(context.Background(), time.Second)
-	response, err := client.Join(context.Background())
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	response, err := client.Join(ctx, &emptypb.Empty{})
 	chat.HandleFatalError(err)
 
 	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
 
 	fmt.Printf("Success! You are user %d.\n", user.ID)
 
-	stream, err := client.ChatStream(context.Background())
+	stream, err := client.ChatStream(ctx)
 	chat.HandleFatalError(err)
 
 	go listen(stream)
-	go readInput(stream)
+	readInput(stream)
 
-	<-sigs
+	//<-sigs
 
 	stream.CloseSend()
 	fmt.Println("You have now exited the chat application")
