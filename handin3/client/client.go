@@ -31,19 +31,9 @@ func main() {
 	client := pb.NewChatServiceClient(conn)
 
 	// Create a JoinRequest message.
-	req := &pb.JoinRequest{
-		UserID: 1,
-	}
-
 	// Send the JoinRequest to the server.
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	res, err := client.Join(ctx, req)
-	if err != nil {
-		log.Fatalf("Client couldn't connect, returning: %v", err)
-	}
-
-	fmt.Printf("Success! You are user %d.\n", res.UserID)
 
 	stream, err := client.ChatStream(context.Background())
 
@@ -51,6 +41,8 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+
+	stream.Send(&pb.Message{UserID: -1, Timestamp: 1, Body: "xd"})
 
 	go listen(stream)
 
@@ -60,13 +52,14 @@ func main() {
 		return
 	}
 
-	client.PublishMessage(context.Background(), &pb.Message{UserID: res.UserID, Timestamp: 1, Body: input})
+	stream.Send(&pb.Message{UserID: 100, Timestamp: 1, Body: input})
 }
 
 func listen(stream pb.ChatService_ChatStreamClient) {
 	for {
 		in, err := stream.Recv()
 		if err != nil {
+			fmt.Println("This is the error")
 			fmt.Println(err)
 			return
 		}

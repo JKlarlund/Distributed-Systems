@@ -24,7 +24,7 @@ type Server struct {
 
 type User struct {
 	userID     int32
-	Connection pb.ChatServiceClient
+	Connection pb.ChatService_ChatStreamServer
 	Clock      *chat.LClock
 }
 
@@ -53,7 +53,7 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
 	for _, conn := range users {
-		conn.Connection.ReceiveMessage(joinContext, message)
+		conn.Connection.Send(message)
 	}
 
 	return &pb.Ack{Message: "Success"}, nil
@@ -63,13 +63,35 @@ func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message
 func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 	for {
 
+		var UserID int32
+
 		msg, err := stream.Recv()
 		if err != nil {
 			fmt.Println(err)
 			return err
 
 		}
+
+		if msg.UserID == -1 {
+			mutex.Lock()
+
+			newUser := &User{
+				userID:     UserID,
+				Connection: stream, // Store the stream for this user
+				Clock:      chat.InitializeLClock(UserID, 0),
+			}
+
+			fmt.Println("This is called!")
+
+			UserID = nextUserID
+			users[UserID] = newUser
+			nextUserID++
+			mutex.Unlock()
+		}
+
 		fmt.Println(msg)
+
+		s.PublishMessage(context.Background(), msg)
 	}
 
 }

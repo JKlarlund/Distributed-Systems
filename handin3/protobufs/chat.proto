@@ -6,7 +6,7 @@ service ChatService {
     rpc PublishMessage(Message) returns (Ack);
     rpc ReceiveMessage(Message) returns (Ack);
     rpc ChatStream(stream Message) returns (stream Message);
-    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Join(JoinRequest) returns (JoinResponse, stream newStream);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
 
 }
