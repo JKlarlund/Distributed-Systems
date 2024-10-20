@@ -35,7 +35,7 @@ type User struct {
 var (
 	users  = make(map[int32]*User)
 	mutex  sync.Mutex
-	logger *log.Logger = chat.InitLogger("server")
+	logger = chat.InitLogger("server")
 )
 
 func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinResponse, error) {
@@ -74,6 +74,7 @@ func (s *Server) PublishMessage(Context context.Context, message *pb.Message) (*
 		if user.userID == message.UserID || user.userID == serverUserID {
 			continue
 		}
+		message.Timestamp = updatedClock
 		err := user.Connection.Send(message)
 		if err != nil {
 			chat.WriteToLog(logger, "Failed to write to user", updatedClock, nextUserID)
@@ -146,8 +147,8 @@ func main() {
 	}
 
 	pb.RegisterChatServiceServer(server, chatServer)
-
 	logMessage := fmt.Sprintf("Server is listening on port %d...", *port)
 	chat.WriteToLog(logger, logMessage, chatServer.Clock.Time, 0)
+	chat.ClearClientLogs()
 	server.Serve(listener)
 }

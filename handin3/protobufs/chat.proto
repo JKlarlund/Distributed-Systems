@@ -8,7 +8,7 @@ service ChatService {
     rpc PublishMessage(Message) returns (Ack);
     rpc ReceiveMessage(Message) returns (Ack);
     rpc ChatStream(stream Message) returns (stream Message);
-    rpc Join(google.protobuf.Empty) returns (JoinResponse);
+    rpc Join(Timestamp) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
 }
 
@@ -18,6 +18,10 @@ message Message {
     string body = 3;
 }
 
+message Timestamp{
+  int32 timestamp = 1;
+}
+
 message Ack { // Acknowledgement
     string message = 1;
 }
@@ -25,6 +29,7 @@ message Ack { // Acknowledgement
 message JoinResponse {
     string message = 1;
     int32 userID = 2;
+    int32 timetsamp = 3;
 }
 
 message LeaveRequest {

@@ -112,6 +112,7 @@ func readInput(stream pb.ChatService_ChatStreamClient) {
 			continue
 		}
 		user.Clock.SendEvent()
+		chat.WriteToLog(logger, "sending message", user.Clock.Time, user.ID)
 		err = stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: message})
 		chat.HandleFatalError(err)
 	}
