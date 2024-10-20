@@ -54,6 +54,9 @@ func main() {
 
 	<-sigs
 
+	_, err = client.Leave(context.Background(), &pb.LeaveRequest{UserID: user.ID})
+	chat.HandleFatalError(err)
+
 	stream.CloseSend()
 	fmt.Println("You have now exited the chat application")
 }

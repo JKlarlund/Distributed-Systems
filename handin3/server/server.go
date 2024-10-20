@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -34,8 +33,9 @@ type User struct {
 }
 
 var (
-	users = make(map[int32]*User)
-	mutex sync.Mutex
+	users  = make(map[int32]*User)
+	mutex  sync.Mutex
+	logger *log.Logger = chat.InitLogger("server")
 )
 
 func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinResponse, error) {
@@ -51,13 +51,22 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 }
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
-	user, exists := users[]
+	_, exists := users[req.UserID]
+	updatedClock := s.Clock.SendEvent()
 	if !exists {
-		return &pb.LeaveResponse{Message: "Users not found", Timestamp: s.Clock.Time}, nil
+		return &pb.LeaveResponse{Message: "Users not found", Timestamp: updatedClock}, nil
 	}
+	delete(users, req.UserID)
+	chat.WriteToLog(logger, "has left the chat", updatedClock, req.UserID)
+	leaveMessage := fmt.Sprintf("Participant %d left Chitty-Chat at Lamport time %v", req.UserID, updatedClock)
+	s.PublishMessage(ctx, &pb.Message{UserID: serverUserID, Timestamp: updatedClock, Body: leaveMessage})
+	return &pb.LeaveResponse{Message: "Success", Timestamp: updatedClock}, nil
 }
 
-func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
+func (s *Server) PublishMessage(Context context.Context, message *pb.Message) (*pb.Ack, error) {
+	updatedClock := s.Clock.SendEvent()
+	logmsg := fmt.Sprintf("Broadcasting message: \"%s\"", message.Body)
+	chat.WriteToLog(logger, logmsg, updatedClock, message.UserID)
 	for _, user := range users {
 		if user.userID == message.UserID || user.userID == serverUserID {
 			continue
@@ -85,12 +94,12 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 	if sender.Connection == nil {
 		sender.Connection = stream
 	}
+	s.Clock.ReceiveEvent(msg.Timestamp)
+	chat.WriteToLog(logger, "Client ready to stream to server", s.Clock.Time, nextUserID)
 
-	updatedTime := s.Clock.SendEvent()
-
-	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at lamport time %v.\n", nextUserID, updatedTime)
-
-	s.PublishMessage(context.Background(), &pb.Message{UserID: serverUserID, Timestamp: updatedTime, Body: joinMessage})
+	updateClock := s.Clock.SendEvent()
+	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at Lamport time %v", nextUserID, updateClock)
+	s.PublishMessage(context.Background(), &pb.Message{UserID: serverUserID, Timestamp: updateClock, Body: joinMessage})
 
 	nextUserID++
 	// Now enter the loop to listen for new messages
@@ -100,6 +109,9 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 			return fmt.Errorf("received nil message")
 		}
 		chat.HandleError(err)
+
+		s.Clock.ReceiveEvent(msg.Timestamp)
+		chat.WriteToLog(logger, "Server received a message from client", s.Clock.Time, msg.UserID)
 
 		_, err = s.PublishMessage(context.Background(), msg)
 		chat.HandleFatalError(err)
