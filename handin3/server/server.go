@@ -49,6 +49,13 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 	}, nil
 }
 
+func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
+	user, exists := users[]
+	if !exists {
+		return &pb.LeaveResponse{Message: "Users not found", Timestamp: s.Clock.Time}, nil
+	}
+}
+
 func (s *Server) PublishMessage(joinContext context.Context, message *pb.Message) (*pb.Ack, error) {
 	for _, user := range users {
 		if user.userID == message.UserID || user.userID == serverUserID {

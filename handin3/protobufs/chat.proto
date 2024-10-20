@@ -28,7 +28,7 @@ message JoinResponse {
 }
 
 message LeaveRequest {
-    string user = 1;
+    int32 userID = 1;
 }
 
 message LeaveResponse {
