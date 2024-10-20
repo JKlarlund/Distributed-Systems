@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -97,7 +98,7 @@ func readInput(stream pb.ChatService_ChatStreamClient) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, err := reader.ReadString('\n')
-
+		message = strings.TrimSpace(message)
 		if len(message) > 128 {
 			fmt.Println("\033[1;31mMessage could not be sent since the length of the message cannot exceed 128 characters\u001B[0m")
 			continue

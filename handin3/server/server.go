@@ -111,6 +111,9 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 		if msg == nil {
 			return fmt.Errorf("received nil message")
 		}
+		if msg.Body == "" {
+			return nil
+		}
 		chat.HandleError(err)
 
 		s.Clock.ReceiveEvent(msg.Timestamp)
