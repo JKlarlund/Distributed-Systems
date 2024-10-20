@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -47,22 +48,26 @@ func main() {
 	stream, err := client.ChatStream(context.Background())
 	if err == nil {
 		fmt.Println("Connection established as user")
-		chat.WriteToLog(logger, "Connection has been established", -1, -1) //Time 0 for newly created client, user ID not given yet.
+		chat.WriteToLog(logger, "Connection has been established", 1, response.UserID) //Time 0 for newly created client, user ID not given yet.
 	}
 
 	chat.HandleFatalError(err)
 	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
-	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: "Connection has been established"})
-	chat.WriteToLog(logger, "User has sent message", -1, -1) //Time 0 for newly created client, user ID not given yet.)
+	updatedClock := user.Clock.SendEvent()
+	stream.Send(&pb.Message{UserID: user.ID, Timestamp: updatedClock, Body: "Connection has been established"})
+	chat.WriteToLog(logger, "User has sent message", user.Clock.Time, user.ID)
 
 	go listen(stream)
 	go readInput(stream)
 
 	<-sigs
-
-	_, err = client.Leave(context.Background(), &pb.LeaveRequest{UserID: user.ID})
+	updatedClock = user.Clock.SendEvent()
+	chat.WriteToLog(logger, "Requesting to leave", updatedClock, user.ID)
+	msg, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: user.ID})
 	chat.HandleFatalError(err)
 
+	user.Clock.ReceiveEvent(msg.Timestamp)
+	chat.WriteToLog(logger, "Connection to server has been closed", user.Clock.Time, user.ID)
 	stream.CloseSend()
 	fmt.Println("You have now exited the chat application")
 }

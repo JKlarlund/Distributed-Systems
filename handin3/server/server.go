@@ -100,9 +100,12 @@ func (s *Server) ChatStream(stream pb.ChatService_ChatStreamServer) error {
 	s.Clock.ReceiveEvent(msg.Timestamp)
 	chat.WriteToLog(logger, "Client ready to stream to server", s.Clock.Time, nextUserID)
 
-	updateClock := s.Clock.SendEvent()
-	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at Lamport time %v", nextUserID, updateClock)
-	s.PublishMessage(context.Background(), &pb.Message{UserID: serverUserID, Timestamp: updateClock, Body: joinMessage})
+	updatedClock := s.Clock.SendEvent()
+	joinMessage := fmt.Sprintf("Participant %d joined chitty-chat at Lamport time %v", nextUserID, updatedClock)
+	logMessage := fmt.Sprintf("Participant %d joined chitty-chat", nextUserID)
+	chat.WriteToLog(logger, logMessage, updatedClock, serverUserID)
+
+	s.PublishMessage(context.Background(), &pb.Message{UserID: serverUserID, Timestamp: updatedClock, Body: joinMessage})
 
 	nextUserID++
 	// Now enter the loop to listen for new messages
