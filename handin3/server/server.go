@@ -44,6 +44,9 @@ func (s *Server) Join(ctx context.Context, empty *emptypb.Empty) (*pb.JoinRespon
 	}
 	users[nextUserID] = newUser
 
+	updatedClock := s.Clock.SendEvent()
+	chat.WriteToLog(logger, "has joined the chat", updatedClock, nextUserID)
+
 	return &pb.JoinResponse{
 		Message: "Ack",
 		UserID:  nextUserID,
@@ -73,7 +76,7 @@ func (s *Server) PublishMessage(Context context.Context, message *pb.Message) (*
 		}
 		err := user.Connection.Send(message)
 		if err != nil {
-			log.Printf("Failed to send message to a user.\n")
+			chat.WriteToLog(logger, "Failed to write to user", updatedClock, nextUserID)
 		}
 
 	}
@@ -125,8 +128,6 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	logfile, _ := os.Create("")
-
 	server := grpc.NewServer()
 
 	chatServer := &Server{
@@ -140,7 +141,7 @@ func main() {
 
 	pb.RegisterChatServiceServer(server, chatServer)
 
-	log.Printf("Server is listening on port %d...", *port)
-
+	logMessage := fmt.Sprintf("Server is listening on port %d...", *port)
+	chat.WriteToLog(logger, logMessage, chatServer.Clock.Time, 0)
 	server.Serve(listener)
 }

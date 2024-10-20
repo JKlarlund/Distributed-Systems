@@ -22,6 +22,8 @@ type User struct {
 
 var user User
 
+var logger *log.Logger = chat.InitLogger("client")
+
 func main() {
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -31,25 +33,28 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
+	chat.WriteToLog(logger, "Trying to connect user", 0, -1) //Time 0 for newly created client, user ID not given yet.
 	client := pb.NewChatServiceClient(conn)
 
 	fmt.Println("Connecting...")
+
 	response, err := client.Join(context.Background(), &emptypb.Empty{})
 	if err != nil {
-		log.Fatalf("Connection failed: %v", err)
+		logger.Fatalf("User has failed to join the chat")
+
 	}
 	stream, err := client.ChatStream(context.Background())
 	if err == nil {
 		fmt.Println("Connection established as user")
+		chat.WriteToLog(logger, "Connection has been established", -1, -1) //Time 0 for newly created client, user ID not given yet.
 	}
+
 	chat.HandleFatalError(err)
 	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 0)}
 	stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: "Connection has been established"})
+	chat.WriteToLog(logger, "User has sent message", -1, -1) //Time 0 for newly created client, user ID not given yet.)
 
 	go listen(stream)
-
-	chat.HandleFatalError(err)
-
 	go readInput(stream)
 
 	<-sigs
@@ -69,13 +74,14 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 				fmt.Println("Server closed the stream.")
 				return
 			}
-			log.Printf("Error while receiving message: %v", err)
+			logger.Printf("Error while receiving message: %v", err)
 			return
 		}
 
 		// Process the incoming message
 		if in != nil {
 			user.Clock.ReceiveEvent(in.Timestamp)
+			chat.WriteToLog(logger, "User has received message at Lamport time", user.Clock.Time, user.ID)
 			// Check for server message
 			if in.UserID == 0 {
 				fmt.Printf("\033[1;34m[Server] %s\033[0m\n", in.Body)
@@ -96,6 +102,7 @@ func readInput(stream pb.ChatService_ChatStreamClient) {
 			fmt.Println("\033[1;31mMessage could not be sent since the length of the message cannot exceed 128 characters\u001B[0m")
 			continue
 		}
+		user.Clock.SendEvent()
 		err = stream.Send(&pb.Message{UserID: user.ID, Timestamp: user.Clock.Time, Body: message})
 		chat.HandleFatalError(err)
 	}
