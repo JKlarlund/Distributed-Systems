@@ -22,9 +22,11 @@ type User struct {
 	Clock *chat.LClock
 }
 
-var user User
-
-var logger *log.Logger = chat.InitLogger("client")
+var (
+	user    User
+	logName string      = "Client-" + strconv.Itoa(os.Getpid())
+	logger  *log.Logger = chat.InitLogger(logName)
+)
 
 func main() {
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
@@ -87,7 +89,8 @@ func listen(stream pb.ChatService_ChatStreamClient) {
 		// Process the incoming message
 		if in != nil {
 			user.Clock.ReceiveEvent(in.Timestamp)
-			chat.WriteToLog(logger, "User has received message at Lamport time", user.Clock.Time, user.ID)
+			logMessage := fmt.Sprintf("Received message: \"%v\" from: user %d", in.Body, in.UserID)
+			chat.WriteToLog(logger, logMessage, user.Clock.Time, user.ID)
 			// Check for server message
 			if in.UserID == 0 {
 				fmt.Printf("\033[1;34m[Server] %s\033[0m\n", in.Body)
