@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"sync"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -111,6 +112,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+
+	logfile, _ := os.Create("")
 
 	server := grpc.NewServer()
 
