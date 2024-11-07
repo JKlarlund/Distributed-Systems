@@ -1,51 +1,66 @@
 package handin4
 
 import (
-	"context"
-	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
+	context2 "context"
+	"fmt"
+	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	"log"
+	"time"
 )
 
-//Hvad vil vi gerne?
-//1. Initialiser en node. Hvis den modtager et request, skal den håndtere det.
-
-type Request struct {
-	NodeID    int32
-	Timestamp int32
-}
-
-type Data struct {
-	clock        LClock
-	requestQueue []Request
-}
-
-type NodeServer struct {
-	protobufs.UnimplementedConsensusServer
-	data *Data
-}
-
-func NewNodeServer(data *Data) *NodeServer {
-	return &NodeServer{
-		data: data,
-	}
+type nodeServer struct {
+	pb.UnimplementedConsensusServer
+	nodeID    int32
+	timestamp int32
 }
 
 func main() {
-	//To handle connecting a new node.
-	var nodeID int32 = 1337
-	nodeData := &Data{
-		clock: LClock{id: nodeID, Time: 0},
+	//Simulate something.
+
+}
+
+func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string) {
+	target, error := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBlock())
+	if error != nil {
+		log.Fatalf("Node %d could not connect to all other nodes, terminating node.", nodeID)
+	}
+	defer target.Close()
+
+	client := pb.NewConsensusClient(target)
+
+	request := &pb.AccessRequest{
+		NodeID:    nodeID,
+		Timestamp: timestamp,
 	}
 
+	context, cancel := context2.WithTimeout(context2.Background(), time.Second)
+	defer cancel()
+
+	response, error := client.RequestAccess(context, request)
+
+	if response.Access {
+		log.Printf("Node %d has access at timestamp %d", nodeID, timestamp)
+	} else {
+		log.Printf("Node %d is not granted access at timestamp %d", nodeID, timestamp)
+	}
 }
 
-func (s *NodeServer) requestAccess(ctx context.Context, req *protobufs.AccessRequest) {
+func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
+	fmt.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
+	var accessGranted bool
+	if req.Timestamp < s.timestamp {
+		accessGranted = true
+	} else {
+		accessGranted = false
+	}
 
-}
+	response := &pb.AccessResponse{
+		NodeID:    s.nodeID,
+		Timestamp: s.timestamp,
+		Access:    accessGranted,
+	}
 
-func requestCS(nodeData Data) {
-	nodeData.clock.Step()
-	//Lav et request = {tid, id}
-	sendRequest(request)
-	//Vent indtil antallet af replies er n-1.
-
+	return response, nil
 }
