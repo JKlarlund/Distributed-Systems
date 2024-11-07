@@ -1,11 +1,16 @@
 package handin4
 
 import (
+	"context"
 	"fmt"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
-	"golang.org/x/net/context"
+	discovery "github.com/fuhrmannb/node-discovery"
 	"google.golang.org/grpc"
 	"log"
+	"math"
+	"math/rand"
+	"net/url"
+	"os"
 	"sync"
 	"time"
 )
@@ -19,37 +24,95 @@ type nodeServer struct {
 	mutex              sync.Mutex
 }
 
-var nodeIsWaitingForAccess bool = false
-var nodeIsInCriticalSection bool = false
+var nodeIsWaitingForAccess = false
+var nodeIsInCriticalSection = false
 
-func main(logger *log.Logger) {
-	//Simulate something.
+func main(logger *log.Logger, id int32) {
+	node := nodeServer{
+		nodeID:             id,
+		clock:              InitializeLClock(0),
+		requestedTimestamp: math.MaxInt32,
+		clients:            make(map[string]pb.ConsensusClient),
+		mutex:              sync.Mutex{},
+	}
+
+	initializeDiscovery(&node)
+
+	// Waiting for a random duration of time before requesting access to critical section
+	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
+	node.requestAccessToCriticalSection()
 }
 
-func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string) {
-	target, error := grpc.Dial(targetAddress, grpc.WithInsecure(), grpc.WithBlock())
-	if error != nil {
-		log.Fatalf("Node %d could not connect to all other nodes, terminating node.", nodeID)
-	}
-	defer target.Close()
+func initializeDiscovery(node *nodeServer) {
+	//Using node-discovery package.
+	myNodeDiscovery, _ := discovery.Listen() //Listens to a default address, we don't have to insert anything.
+	hostname, _ := os.Hostname()
+	serviceURL, _ := url.Parse("http://" + hostname + ":" + fmt.Sprint(node.nodeID))
+	myNodeDiscovery.Register(serviceURL)
+	nodeEventChannel := make(chan discovery.NodeEvent)
+	myNodeDiscovery.Subscribe(nodeEventChannel)
+	go node.handleDiscoveryEvent(&nodeEventChannel)
+}
 
-	client := pb.NewConsensusClient(target)
+func (s *nodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
+	for event := range *channel {
+		nodeAddress := event.Service.Host
+		if event.Type == discovery.ServiceJoinEvent {
+			//Service has joined the cluster
+			if nodeAddress != s.selfAddress { // Exclude itself
+				s.initializeConnection(nodeAddress)
+				log.Printf("Node joined: %s", nodeAddress)
+			}
+		}
+		if event.Type == discovery.ServiceLeaveEvent {
+			//Service has left the cluser.
+			s.severConnection(nodeAddress)
+			log.Printf("Node left: %s", nodeAddress)
+		}
+	}
+}
+
+// Inserts a k,v pair from our map
+func (s *nodeServer) initializeConnection(target string) {
+	_, ok := s.clients[target]
+	if !ok {
+		conn, _ := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
+		s.clients[target] = pb.NewConsensusClient(conn)
+	}
+}
+
+// Deletes a k,v pair from our map
+func (s *nodeServer) severConnection(target string) {
+	_, ok := s.clients[target]
+	if ok {
+		delete(s.clients, target)
+	}
+}
+
+func (s *nodeServer) requestAccessToCriticalSection() {
+	nodeIsWaitingForAccess = true
+
+	s.requestedTimestamp = s.clock.SendEvent() // Incrementing timestamp once before saving it
+	var wg sync.WaitGroup
+	wg.Add(len(s.clients))
 
 	request := &pb.AccessRequest{
-		NodeID:    nodeID,
-		Timestamp: timestamp,
+		NodeID:    s.nodeID,
+		Timestamp: s.requestedTimestamp,
+		Address:   s.selfAddress,
 	}
 
-	context, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	response, error := client.RequestAccess(context, request)
-
-	if response.Access {
-		log.Printf("Node %d has access at timestamp %d", nodeID, timestamp)
-	} else {
-		log.Printf("Node %d is not granted access at timestamp %d", nodeID, timestamp)
+	//We need to wait for clients to have n-1 approvals. Then go write something.
+	for _, client := range s.clients {
+		go s.requestSingleAccess(&client, request, &wg)
 	}
+
+	wg.Wait()
+
+	s.emulateCriticalSection()
+
+	nodeIsWaitingForAccess = false
+
 }
 
 // RequestAccess The purpose is to receive a request, decide if access should be granted to the requesting node, and
@@ -75,45 +138,6 @@ func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (
 	return response, nil
 }
 
-func (s *nodeServer) processQueue() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	var newQueue []*pb.AccessRequest
-	for _, request := range s.replyQueue {
-
-		if shouldHaveAccess(request.Timestamp, s.requestedTimestamp) {
-
-			response := &pb.AccessResponse{
-				NodeID:    s.nodeID,
-				Timestamp: s.clock.SendEvent(), // Incrementing the Lamport clock
-				Access:    true,
-			}
-			go s.sendQueuedResponse(request.NodeID, response)
-		} else {
-			newQueue = append(newQueue, request)
-		}
-	}
-	s.replyQueue = newQueue
-}
-
-func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessResponse) {
-	var address string = ""
-	target, error := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
-	if error != nil {
-		log.Fatalf("Node %d could not connect to node %d", s.nodeID, nodeID)
-	}
-	defer target.Close()
-
-	client := pb.NewConsensusClient(target)
-	_, error = client.GrantQueuedAccess(context.Background(), response)
-
-	if error != nil {
-		log.Fatalf("Node %d could not send grant access message to node %d", s.nodeID, nodeID)
-	}
-}
-
-// TROR det er sådan her det skal evalueres. Hvis requesten
 func shouldHaveAccess(requestTime int32, OwnRequestTime int32) bool {
 	// Checking if the node is in the critical section
 	if nodeIsInCriticalSection {

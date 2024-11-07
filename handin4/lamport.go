@@ -5,9 +5,8 @@ type LClock struct {
 	Time int32
 }
 
-func InitializeLClock(id int32, currentTime int32) *LClock {
+func InitializeLClock(currentTime int32) *LClock {
 	return &LClock{
-		id:   id,
 		Time: currentTime,
 	}
 }
