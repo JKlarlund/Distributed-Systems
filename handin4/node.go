@@ -7,16 +7,21 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"log"
+	"sync"
 	"time"
 )
 
 type nodeServer struct {
 	pb.UnimplementedConsensusServer
-	nodeID    int32
-	timestamp int32
+	nodeID     int32
+	timestamp  int32
+	replyQueue []*pb.AccessRequest
+	mutex      sync.Mutex
 }
 
-func main() {
+var currentlyRequestingAccess bool = false
+
+func main(logger *log.Logger) {
 	//Simulate something.
 
 }
@@ -50,7 +55,7 @@ func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string)
 func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
 	fmt.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
 	var accessGranted bool
-	if req.Timestamp < s.timestamp {
+	if req.Timestamp < s.timestamp && !currentlyRequestingAccess {
 		accessGranted = true
 	} else {
 		accessGranted = false
@@ -63,4 +68,35 @@ func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (
 	}
 
 	return response, nil
+}
+func (s *nodeServer) processQueue() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	var newQueue []*pb.AccessRequest
+	for _, request := range s.replyQueue {
+
+		if shouldHaveAccess(request.Timestamp, s.timestamp) {
+			response := &pb.AccessResponse{
+				NodeID:    s.nodeID,
+				Timestamp: s.timestamp,
+				Access:    true,
+			}
+			go s.sendQueuedResponse(request.NodeID, response)
+		} else {
+			newQueue = append(newQueue, request)
+		}
+	}
+	s.replyQueue = newQueue
+}
+
+func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessResponse) {
+
+}
+
+func shouldHaveAccess(requestTime int32, serverTime int32) bool {
+	if requestTime < serverTime && !currentlyRequestingAccess {
+		return true
+	}
+	return false
 }
