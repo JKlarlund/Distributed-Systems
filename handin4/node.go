@@ -90,7 +90,7 @@ func (s *nodeServer) processQueue() {
 	s.replyQueue = newQueue
 }
 
-func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRequest) {
+func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessResponse) {
 	var address string = ""
 	target, error := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if error != nil {
@@ -99,7 +99,7 @@ func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRequest
 	defer target.Close()
 
 	client := pb.NewConsensusClient(target)
-	_, error = client.GrantQueuedAccess(context.Background(), &pb.AccessResponse{NodeID: s.nodeID, Timestamp: s.timestamp, Access: true})
+	_, error = client.GrantQueuedAccess(context.Background(), response)
 
 	if error != nil {
 		log.Fatalf("Node %d could not send grant access message to node %d", s.nodeID, nodeID)
