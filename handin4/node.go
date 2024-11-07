@@ -20,8 +20,9 @@ type nodeServer struct {
 	nodeID             int32
 	clock              *LClock
 	requestedTimestamp int32 // When node requested access to critical section. Should me initialized to MAX INT
-	replyQueue         []*pb.AccessRequest
 	mutex              sync.Mutex
+	clients            map[string]pb.ConsensusClient // Stores addresses of discovered nodes, excluding itself
+	selfAddress        string                        // Store the current node's address
 }
 
 var nodeIsWaitingForAccess = false
@@ -115,6 +116,26 @@ func (s *nodeServer) requestAccessToCriticalSection() {
 
 }
 
+func (s *nodeServer) emulateCriticalSection() {
+	nodeIsInCriticalSection = true
+	fmt.Sprintf("Node %d is in the critical section at lamport time %d", s.nodeID, s.clock.Time)
+	time.Sleep(2 * time.Second)
+	nodeIsInCriticalSection = false
+}
+
+func (s *nodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb.AccessRequest, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	context, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	s.clock.SendEvent() // Incrementing the lamport clock for each send event
+	_, err := (*client).RequestAccess(context, request)
+	if err != nil {
+		log.Fatalf("Something went wrong in Request Single Access")
+	}
+}
+
 // RequestAccess The purpose is to receive a request, decide if access should be granted to the requesting node, and
 // send a response back to the requesting node.
 func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
@@ -128,11 +149,18 @@ func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (
 
 	// Checking if access should be granted to the requesting node
 	accessGranted := shouldHaveAccess(req.Timestamp, s.requestedTimestamp)
-
 	response := &pb.AccessResponse{
 		NodeID:    s.nodeID,
 		Timestamp: s.clock.SendEvent(), // Incrementing the Lamport clock
 		Access:    accessGranted,
+	}
+	if !accessGranted {
+		for {
+			time.Sleep(time.Second)
+			if shouldHaveAccess(req.Timestamp, s.requestedTimestamp) {
+				return response, nil
+			}
+		}
 	}
 
 	return response, nil
