@@ -1,4 +1,4 @@
-package handin4
+package Clock
 
 type LClock struct {
 	id   int32

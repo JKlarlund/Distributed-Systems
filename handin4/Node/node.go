@@ -1,62 +1,47 @@
-package handin4
+package Node
 
 import (
 	"context"
 	"fmt"
+	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/Clock"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
 	discovery "github.com/fuhrmannb/node-discovery"
 	"google.golang.org/grpc"
 	"log"
-	"math"
-	"math/rand"
 	"net/url"
 	"os"
 	"sync"
 	"time"
 )
 
-type nodeServer struct {
+type NodeServer struct {
 	pb.UnimplementedConsensusServer
-	nodeID             int32
-	clock              *LClock
-	requestedTimestamp int32 // When node requested access to critical section. Should me initialized to MAX INT
-	mutex              sync.Mutex
-	clients            map[string]pb.ConsensusClient // Stores addresses of discovered nodes, excluding itself
+	NodeID             int32
+	Clock              *Clock.LClock
+	RequestedTimestamp int32 // When node requested access to critical section. Should me initialized to MAX INT
+	Mutex              sync.Mutex
+	Clients            map[string]pb.ConsensusClient // Stores addresses of discovered nodes, excluding itself
 	selfAddress        string                        // Store the current node's address
 }
 
 var nodeIsWaitingForAccess = false
 var nodeIsInCriticalSection = false
 
-func main(logger *log.Logger, id int32) {
-	node := nodeServer{
-		nodeID:             id,
-		clock:              InitializeLClock(0),
-		requestedTimestamp: math.MaxInt32,
-		clients:            make(map[string]pb.ConsensusClient),
-		mutex:              sync.Mutex{},
-	}
-
-	initializeDiscovery(&node)
-
-	// Waiting for a random duration of time before requesting access to critical section
-	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
-	node.requestAccessToCriticalSection()
-}
-
-func initializeDiscovery(node *nodeServer) {
+func InitializeDiscovery(node *NodeServer) {
 	//Using node-discovery package.
 	myNodeDiscovery, _ := discovery.Listen() //Listens to a default address, we don't have to insert anything.
 	hostname, _ := os.Hostname()
-	serviceURL, _ := url.Parse("http://" + hostname + ":" + fmt.Sprint(node.nodeID))
+	serviceURL, _ := url.Parse("http://" + hostname + ":" + fmt.Sprint(node.NodeID))
 	myNodeDiscovery.Register(serviceURL)
 	nodeEventChannel := make(chan discovery.NodeEvent)
 	myNodeDiscovery.Subscribe(nodeEventChannel)
 	go node.handleDiscoveryEvent(&nodeEventChannel)
 }
 
-func (s *nodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
+func (s *NodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
+	log.Println("Før")
 	for event := range *channel {
+		log.Println("Efter")
 		nodeAddress := event.Service.Host
 		if event.Type == discovery.ServiceJoinEvent {
 			//Service has joined the cluster
@@ -74,37 +59,41 @@ func (s *nodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
 }
 
 // Inserts a k,v pair from our map
-func (s *nodeServer) initializeConnection(target string) {
-	_, ok := s.clients[target]
+func (s *NodeServer) initializeConnection(target string) {
+	_, ok := s.Clients[target]
 	if !ok {
-		conn, _ := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
-		s.clients[target] = pb.NewConsensusClient(conn)
+		conn, err := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
+		if err != nil {
+			log.Println(err.Error())
+		}
+		s.Clients[target] = pb.NewConsensusClient(conn)
+
 	}
 }
 
 // Deletes a k,v pair from our map
-func (s *nodeServer) severConnection(target string) {
-	_, ok := s.clients[target]
+func (s *NodeServer) severConnection(target string) {
+	_, ok := s.Clients[target]
 	if ok {
-		delete(s.clients, target)
+		delete(s.Clients, target)
 	}
 }
 
-func (s *nodeServer) requestAccessToCriticalSection() {
+func (s *NodeServer) RequestAccessToCriticalSection() {
 	nodeIsWaitingForAccess = true
 
-	s.requestedTimestamp = s.clock.SendEvent() // Incrementing timestamp once before saving it
+	s.RequestedTimestamp = s.Clock.SendEvent() // Incrementing timestamp once before saving it
 	var wg sync.WaitGroup
-	wg.Add(len(s.clients))
+	wg.Add(len(s.Clients))
 
 	request := &pb.AccessRequest{
-		NodeID:    s.nodeID,
-		Timestamp: s.requestedTimestamp,
+		NodeID:    s.NodeID,
+		Timestamp: s.RequestedTimestamp,
 		Address:   s.selfAddress,
 	}
 
 	//We need to wait for clients to have n-1 approvals. Then go write something.
-	for _, client := range s.clients {
+	for _, client := range s.Clients {
 		go s.requestSingleAccess(&client, request, &wg)
 	}
 
@@ -116,20 +105,21 @@ func (s *nodeServer) requestAccessToCriticalSection() {
 
 }
 
-func (s *nodeServer) emulateCriticalSection() {
+func (s *NodeServer) emulateCriticalSection() {
 	nodeIsInCriticalSection = true
-	fmt.Sprintf("Node %d is in the critical section at lamport time %d", s.nodeID, s.clock.Time)
+	log.Println(fmt.Sprintf("Node %d is in the critical section at lamport time %d", s.NodeID, s.Clock.Time))
 	time.Sleep(2 * time.Second)
+	log.Println(fmt.Sprintf("Node %d is leaving the critical section at lamport time %d", s.NodeID, s.Clock.Time))
 	nodeIsInCriticalSection = false
 }
 
-func (s *nodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb.AccessRequest, wg *sync.WaitGroup) {
+func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb.AccessRequest, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	context, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	s.clock.SendEvent() // Incrementing the lamport clock for each send event
+	s.Clock.SendEvent() // Incrementing the lamport clock for each send event
 	_, err := (*client).RequestAccess(context, request)
 	if err != nil {
 		log.Fatalf("Something went wrong in Request Single Access")
@@ -138,28 +128,26 @@ func (s *nodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb
 
 // RequestAccess The purpose is to receive a request, decide if access should be granted to the requesting node, and
 // send a response back to the requesting node.
-func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (s *NodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
 
-	fmt.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
+	log.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
 
 	// Updated and incremented local clock since this is a receive event
-	s.clock.ReceiveEvent(req.Timestamp)
+	s.Clock.ReceiveEvent(req.Timestamp)
 
 	// Checking if access should be granted to the requesting node
-	accessGranted := shouldHaveAccess(req.Timestamp, s.requestedTimestamp)
+	accessGranted := shouldHaveAccess(req.Timestamp, s.RequestedTimestamp)
 	response := &pb.AccessResponse{
-		NodeID:    s.nodeID,
-		Timestamp: s.clock.SendEvent(), // Incrementing the Lamport clock
+		NodeID:    s.NodeID,
+		Timestamp: s.Clock.SendEvent(), // Incrementing the Lamport clock
 		Access:    accessGranted,
 	}
-	if !accessGranted {
-		for {
-			time.Sleep(time.Second)
-			if shouldHaveAccess(req.Timestamp, s.requestedTimestamp) {
-				return response, nil
-			}
+	for !accessGranted {
+		time.Sleep(time.Second)
+		if shouldHaveAccess(req.Timestamp, s.RequestedTimestamp) {
+			return response, nil
 		}
 	}
 
