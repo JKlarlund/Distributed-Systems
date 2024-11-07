@@ -99,8 +99,11 @@ func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRequest
 	defer target.Close()
 
 	client := pb.NewConsensusClient(target)
-	_, error = client.R(context2.Background(), response)
+	_, error = client.GrantQueuedAccess(context.Background(), &pb.AccessResponse{NodeID: s.nodeID, Timestamp: s.timestamp, Access: true})
 
+	if error != nil {
+		log.Fatalf("Node %d could not send grant access message to node %d", s.nodeID, nodeID)
+	}
 }
 
 func shouldHaveAccess(requestTime int32, serverTime int32) bool {
