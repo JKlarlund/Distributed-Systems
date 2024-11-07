@@ -58,6 +58,7 @@ func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (
 	if shouldHaveAccess(req.Timestamp, s.timestamp) {
 		accessGranted = true
 	} else {
+		s.replyQueue = append(s.replyQueue, req)
 		accessGranted = false
 	}
 
