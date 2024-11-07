@@ -12,18 +12,18 @@ import (
 
 type nodeServer struct {
 	pb.UnimplementedConsensusServer
-	nodeID     int32
-	timestamp  int32
-	replyQueue []*pb.AccessRequest
-	mutex      sync.Mutex
+	nodeID             int32
+	clock              *LClock
+	requestedTimestamp int32 // When node requested access to critical section. Should me initialized to MAX INT
+	replyQueue         []*pb.AccessRequest
+	mutex              sync.Mutex
 }
 
-var currentlyRequestingAccess bool = false
-var executingCriticalSection bool = false
+var nodeIsWaitingForAccess bool = false
+var nodeIsInCriticalSection bool = false
 
 func main(logger *log.Logger) {
 	//Simulate something.
-
 }
 
 func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string) {
@@ -52,24 +52,29 @@ func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string)
 	}
 }
 
+// RequestAccess The purpose is to receive a request, decide if access should be granted to the requesting node, and
+// send a response back to the requesting node.
 func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	fmt.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
-	var accessGranted bool
-	if shouldHaveAccess(req.Timestamp, s.timestamp) {
-		accessGranted = true
-	} else {
-		s.replyQueue = append(s.replyQueue, req)
-		accessGranted = false
-	}
+
+	// Updated and incremented local clock since this is a receive event
+	s.clock.ReceiveEvent(req.Timestamp)
+
+	// Checking if access should be granted to the requesting node
+	accessGranted := shouldHaveAccess(req.Timestamp, s.requestedTimestamp)
 
 	response := &pb.AccessResponse{
 		NodeID:    s.nodeID,
-		Timestamp: s.timestamp,
+		Timestamp: s.clock.SendEvent(), // Incrementing the Lamport clock
 		Access:    accessGranted,
 	}
 
 	return response, nil
 }
+
 func (s *nodeServer) processQueue() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -77,10 +82,11 @@ func (s *nodeServer) processQueue() {
 	var newQueue []*pb.AccessRequest
 	for _, request := range s.replyQueue {
 
-		if shouldHaveAccess(request.Timestamp, s.timestamp) {
+		if shouldHaveAccess(request.Timestamp, s.requestedTimestamp) {
+
 			response := &pb.AccessResponse{
 				NodeID:    s.nodeID,
-				Timestamp: s.timestamp,
+				Timestamp: s.clock.SendEvent(), // Incrementing the Lamport clock
 				Access:    true,
 			}
 			go s.sendQueuedResponse(request.NodeID, response)
@@ -109,15 +115,13 @@ func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRespons
 
 // TROR det er sådan her det skal evalueres. Hvis requesten
 func shouldHaveAccess(requestTime int32, OwnRequestTime int32) bool {
-	if executingCriticalSection {
+	// Checking if the node is in the critical section
+	if nodeIsInCriticalSection {
 		return false
-	} else {
-		if currentlyRequestingAccess {
-			if requestTime < OwnRequestTime {
-				return true
-			}
-			return false
-		}
-		return true
 	}
+	// Checking if the node requested access before this node
+	if nodeIsWaitingForAccess && requestTime > OwnRequestTime {
+		return false
+	}
+	return true
 }
