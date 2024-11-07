@@ -1,7 +1,6 @@
 package handin4
 
 import (
-	context2 "context"
 	"fmt"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
 	"golang.org/x/net/context"
@@ -20,6 +19,7 @@ type nodeServer struct {
 }
 
 var currentlyRequestingAccess bool = false
+var executingCriticalSection bool = false
 
 func main(logger *log.Logger) {
 	//Simulate something.
@@ -40,7 +40,7 @@ func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string)
 		Timestamp: timestamp,
 	}
 
-	context, cancel := context2.WithTimeout(context2.Background(), time.Second)
+	context, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	response, error := client.RequestAccess(context, request)
@@ -55,7 +55,7 @@ func requestCriticalSection(nodeID int32, timestamp int32, targetAddress string)
 func (s *nodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (*pb.AccessResponse, error) {
 	fmt.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
 	var accessGranted bool
-	if req.Timestamp < s.timestamp && !currentlyRequestingAccess {
+	if shouldHaveAccess(req.Timestamp, s.timestamp) {
 		accessGranted = true
 	} else {
 		accessGranted = false
@@ -106,9 +106,17 @@ func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRespons
 	}
 }
 
-func shouldHaveAccess(requestTime int32, serverTime int32) bool {
-	if requestTime < serverTime && !currentlyRequestingAccess {
+// TROR det er sådan her det skal evalueres. Hvis requesten
+func shouldHaveAccess(requestTime int32, OwnRequestTime int32) bool {
+	if executingCriticalSection {
+		return false
+	} else {
+		if currentlyRequestingAccess {
+			if requestTime < OwnRequestTime {
+				return true
+			}
+			return false
+		}
 		return true
 	}
-	return false
 }
