@@ -90,7 +90,16 @@ func (s *nodeServer) processQueue() {
 	s.replyQueue = newQueue
 }
 
-func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessResponse) {
+func (s *nodeServer) sendQueuedResponse(nodeID int32, response *pb.AccessRequest) {
+	var address string = ""
+	target, error := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	if error != nil {
+		log.Fatalf("Node %d could not connect to node %d", s.nodeID, nodeID)
+	}
+	defer target.Close()
+
+	client := pb.NewConsensusClient(target)
+	_, error = client.R(context2.Background(), response)
 
 }
 

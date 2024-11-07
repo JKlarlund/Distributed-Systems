@@ -1,10 +1,11 @@
 syntax = "proto3";
 
+import "google/protobuf/empty.proto";
 option go_package = "protobufs/";
 
 service Consensus {
   rpc RequestAccess (AccessRequest) returns (AccessResponse);
-  
+  rpc GrantQueuedAccess (AccessResponse) returns (google.protobuf.Empty);
 }
 
 message AccessRequest {
