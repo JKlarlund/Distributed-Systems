@@ -5,6 +5,9 @@ import (
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
 )
 
+//Hvad vil vi gerne?
+//1. Initialiser en node. Hvis den modtager et request, skal den håndtere det.
+
 type Request struct {
 	NodeID    int32
 	Timestamp int32

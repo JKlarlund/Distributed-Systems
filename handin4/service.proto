@@ -4,6 +4,7 @@ option go_package = "protobufs/";
 
 service Consensus {
   rpc RequestAccess (AccessRequest) returns (AccessResponse);
+  
 }
 
 message AccessRequest {
