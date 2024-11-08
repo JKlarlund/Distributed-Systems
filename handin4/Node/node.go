@@ -38,7 +38,6 @@ func InitializeDiscovery(node *NodeServer) {
 			log.Printf("Node added: %s", nodeAddresses[i])
 		}
 	}
-	log.Println("I finished the initializing of dis")
 }
 
 func (s *NodeServer) StartGRPCServer() {
@@ -119,7 +118,7 @@ func (s *NodeServer) emulateCriticalSection() {
 func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb.AccessRequest, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	context, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	context, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	s.Clock.SendEvent() // Incrementing the lamport clock for each send event
