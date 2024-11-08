@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/Clock"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
-	discovery "github.com/fuhrmannb/node-discovery"
 	"google.golang.org/grpc"
 	"log"
-	"net/url"
-	"os"
+	"net"
 	"sync"
 	"time"
 )
@@ -21,48 +19,57 @@ type NodeServer struct {
 	RequestedTimestamp int32 // When node requested access to critical section. Should me initialized to MAX INT
 	Mutex              sync.Mutex
 	Clients            map[string]pb.ConsensusClient // Stores addresses of discovered nodes, excluding itself
-	selfAddress        string                        // Store the current node's address
+	SelfAddress        string                        // Store the current node's address
 }
 
 var nodeIsWaitingForAccess = false
 var nodeIsInCriticalSection = false
 
-func InitializeDiscovery(node *NodeServer) {
-	//Using node-discovery package.
-	myNodeDiscovery, _ := discovery.Listen() //Listens to a default address, we don't have to insert anything.
-	hostname, _ := os.Hostname()
-	serviceURL, _ := url.Parse("http://" + hostname + ":" + fmt.Sprint(node.NodeID))
-	myNodeDiscovery.Register(serviceURL)
-	nodeEventChannel := make(chan discovery.NodeEvent)
-	myNodeDiscovery.Subscribe(nodeEventChannel)
-	go node.handleDiscoveryEvent(&nodeEventChannel)
-}
+func InitializeDiscovery(node *NodeServer, wg *sync.WaitGroup) {
+	defer wg.Done()
+	nodeAddresses := []string{
+		"127.0.0.1:5000",
+		"127.0.0.1:5001",
+		"127.0.0.1:5002",
+	}
+	for i := 0; i < len(nodeAddresses); i++ {
+		log.Println("Address: ", nodeAddresses[i])
+		if nodeAddresses[i] != node.SelfAddress {
+			log.Println("Do I get here?")
+			node.initializeConnection(nodeAddresses[i])
 
-func (s *NodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
-	log.Println("Før")
-	for event := range *channel {
-		log.Println("Efter")
-		nodeAddress := event.Service.Host
-		if event.Type == discovery.ServiceJoinEvent {
-			//Service has joined the cluster
-			if nodeAddress != s.selfAddress { // Exclude itself
-				s.initializeConnection(nodeAddress)
-				log.Printf("Node joined: %s", nodeAddress)
-			}
-		}
-		if event.Type == discovery.ServiceLeaveEvent {
-			//Service has left the cluser.
-			s.severConnection(nodeAddress)
-			log.Printf("Node left: %s", nodeAddress)
+			log.Printf("Node added: %s", nodeAddresses[i])
 		}
 	}
+	log.Println("I finished the initializing of dis")
+}
+
+func (s *NodeServer) StartGRPCServer() {
+	listener, err := net.Listen("tcp", s.SelfAddress)
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", s.SelfAddress, err)
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterConsensusServer(grpcServer, s)
+
+	log.Printf("Node %d is running gRPC server at %s", s.NodeID, s.SelfAddress)
+
+	// Start the server in a goroutine so it runs concurrently
+	go func() {
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Fatalf("Failed to serve gRPC server: %v", err)
+		}
+	}()
 }
 
 // Inserts a k,v pair from our map
 func (s *NodeServer) initializeConnection(target string) {
 	_, ok := s.Clients[target]
+	log.Printf("client: %t", ok)
 	if !ok {
 		conn, err := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
+		log.Println("HI!")
 		if err != nil {
 			log.Println(err.Error())
 		}
@@ -89,7 +96,7 @@ func (s *NodeServer) RequestAccessToCriticalSection() {
 	request := &pb.AccessRequest{
 		NodeID:    s.NodeID,
 		Timestamp: s.RequestedTimestamp,
-		Address:   s.selfAddress,
+		Address:   s.SelfAddress,
 	}
 
 	//We need to wait for clients to have n-1 approvals. Then go write something.
