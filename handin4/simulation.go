@@ -41,11 +41,10 @@ func initializeNode(port int32, wg *sync.WaitGroup) {
 
 	log.Printf("Node %d initialized at %s", node.NodeID, node.SelfAddress)
 
-	Node.InitializeDiscovery(&node, wg)
+	Node.InitializeDiscovery(&node)
 
-	log.Println("Do I get here in the code?")
 	// Waiting for a random duration of time before requesting access to critical section
 	time.Sleep(time.Second * 3)
 	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
-	node.RequestAccessToCriticalSection()
+	node.RequestAccessToCriticalSection(wg)
 }

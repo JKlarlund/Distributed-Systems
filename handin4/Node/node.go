@@ -25,17 +25,14 @@ type NodeServer struct {
 var nodeIsWaitingForAccess = false
 var nodeIsInCriticalSection = false
 
-func InitializeDiscovery(node *NodeServer, wg *sync.WaitGroup) {
-	defer wg.Done()
+func InitializeDiscovery(node *NodeServer) {
 	nodeAddresses := []string{
 		"127.0.0.1:5000",
 		"127.0.0.1:5001",
 		"127.0.0.1:5002",
 	}
 	for i := 0; i < len(nodeAddresses); i++ {
-		log.Println("Address: ", nodeAddresses[i])
 		if nodeAddresses[i] != node.SelfAddress {
-			log.Println("Do I get here?")
 			node.initializeConnection(nodeAddresses[i])
 
 			log.Printf("Node added: %s", nodeAddresses[i])
@@ -66,10 +63,8 @@ func (s *NodeServer) StartGRPCServer() {
 // Inserts a k,v pair from our map
 func (s *NodeServer) initializeConnection(target string) {
 	_, ok := s.Clients[target]
-	log.Printf("client: %t", ok)
 	if !ok {
 		conn, err := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
-		log.Println("HI!")
 		if err != nil {
 			log.Println(err.Error())
 		}
@@ -86,7 +81,8 @@ func (s *NodeServer) severConnection(target string) {
 	}
 }
 
-func (s *NodeServer) RequestAccessToCriticalSection() {
+func (s *NodeServer) RequestAccessToCriticalSection(wg1 *sync.WaitGroup) {
+	defer wg1.Done()
 	nodeIsWaitingForAccess = true
 
 	s.RequestedTimestamp = s.Clock.SendEvent() // Incrementing timestamp once before saving it
@@ -129,7 +125,7 @@ func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb
 	s.Clock.SendEvent() // Incrementing the lamport clock for each send event
 	_, err := (*client).RequestAccess(context, request)
 	if err != nil {
-		log.Fatalf("Something went wrong in Request Single Access")
+		log.Printf("Error in Request Single Access to %s: %v", request.Address, err)
 	}
 }
 
