@@ -119,7 +119,7 @@ func (s *NodeServer) emulateCriticalSection() {
 func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb.AccessRequest, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	context, cancel := context.WithTimeout(context.Background(), time.Second)
+	context, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	s.Clock.SendEvent() // Incrementing the lamport clock for each send event
