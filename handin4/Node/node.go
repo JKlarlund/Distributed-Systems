@@ -6,10 +6,10 @@ import (
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/Clock"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"log"
 	"net"
-	"net/url"
-	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,16 +28,21 @@ var nodeIsWaitingForAccess = false
 var nodeIsInCriticalSection = false
 
 func InitializeDiscovery(node *NodeServer) {
-	hostname, _ := os.Hostname()
-	serviceURL, _ := url.Parse(hostname + ":" + fmt.Sprint(node.NodeID))
-	node.selfAddress = serviceURL.String()
-	go node.broadcastNode()
-	node.handleDiscoveryEvent(node.NodeID)
+	ip, _ := getLocalIP()                                    // Gets the local IP address.
+	node.selfAddress = fmt.Sprintf("%s:%d", ip, node.NodeID) //IP:Port.
+	go node.broadcastNode(0)
+	go node.broadcastNode(1)
+	go node.broadcastNode(2)
+	//Starts broadcasting that the node is there
+	go node.handleDiscoveryEvent(0)
+	go node.handleDiscoveryEvent(1)
+	go node.handleDiscoveryEvent(2)
 
 }
 
-func (s *NodeServer) broadcastNode() {
-	conn, err := net.Dial("udp", "255.255.255.255:54321")
+func (s *NodeServer) broadcastNode(id int) {
+	addr := fmt.Sprintf("%s:%d", "255.255.255.255", 54321+id)
+	conn, err := net.Dial("udp", addr)
 	if err != nil {
 		fmt.Println("Something went wrong with broadcasting node")
 	}
@@ -52,14 +57,14 @@ func (s *NodeServer) broadcastNode() {
 		}
 
 		// Wait before broadcasting again (e.g., every 2 seconds)
-		time.Sleep(2 * time.Second)
+		time.Sleep(time.Second)
 	}
 }
 
 func (s *NodeServer) handleDiscoveryEvent(id int32) {
-	port := fmt.Sprintf(":%d", 54321+id)
+	address := fmt.Sprintf("255.255.255.255:%d", 54321+id)
 
-	addr, err := net.ResolveUDPAddr("udp", port) // Listen on UDP port 54321
+	addr, err := net.ResolveUDPAddr("udp", address) // Listen on UDP port 54321
 	if err != nil {
 		log.Printf("Error resolving address: %v", err)
 		return
@@ -75,7 +80,7 @@ func (s *NodeServer) handleDiscoveryEvent(id int32) {
 	buf := make([]byte, 1024) // Buffer for incoming data
 	for {
 		// Read data from the UDP connection
-		n, remoteAddr, err := conn.ReadFromUDP(buf)
+		n, _, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			log.Printf("Error reading from UDP: %v", err)
 			continue
@@ -83,7 +88,7 @@ func (s *NodeServer) handleDiscoveryEvent(id int32) {
 
 		// Process the received message
 		message := string(buf[:n])
-		log.Printf("Received message from %s: %s", remoteAddr, message)
+		//log.Printf("Received message from %s: %s", remoteAddr, message)
 
 		// Extract the NodeID and Address (assuming the message format is consistent)
 		var nodeID int
@@ -97,7 +102,7 @@ func (s *NodeServer) handleDiscoveryEvent(id int32) {
 		// Avoid responding to itself
 		if nodeAddress != s.selfAddress {
 			// Handle the discovery of the other node
-			s.initializeConnection(remoteAddr.String())
+			s.initializeConnection(nodeAddress)
 		}
 	}
 }
@@ -106,12 +111,11 @@ func (s *NodeServer) handleDiscoveryEvent(id int32) {
 func (s *NodeServer) initializeConnection(target string) {
 	_, ok := s.Clients[target]
 	if !ok {
-
-		conn, err := grpc.Dial(target, grpc.WithInsecure())
-		fmt.Println(target)
-
+		conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		fmt.Printf("Node id is %d", s.NodeID)
+		fmt.Println(string(s.NodeID) + ": " + "Adding address " + target)
 		if err != nil {
-			log.Println(err.Error())
+			fmt.Println("Error: " + err.Error())
 		}
 
 		s.Clients[target] = pb.NewConsensusClient(conn)
@@ -170,7 +174,7 @@ func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb
 	s.Clock.SendEvent() // Incrementing the lamport clock for each send event
 	_, err := (*client).RequestAccess(context, request)
 	if err != nil {
-		log.Fatalf("Something went wrong in Request Single Access")
+		log.Fatalf("requestSingleAccess: " + err.Error())
 	}
 }
 
@@ -212,4 +216,35 @@ func shouldHaveAccess(requestTime int32, OwnRequestTime int32) bool {
 		return false
 	}
 	return true
+}
+
+func getLocalIP() (string, error) {
+	// Get all the network interfaces on the machine
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+
+	// Loop through all interfaces and get the first non-loopback IPv4 address
+	for _, iface := range interfaces {
+		// Skip loopback interfaces (127.0.0.1)
+		if iface.Flags&net.FlagUp == 0 || strings.HasPrefix(iface.Name, "lo") {
+			continue
+		}
+
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return "", err
+		}
+
+		for _, addr := range addrs {
+			// Check if it's an IPv4 address (ignoring IPv6 addresses)
+			ipNet, ok := addr.(*net.IPNet)
+			if ok && ipNet.IP.To4() != nil {
+				return ipNet.IP.String(), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no valid IP address found")
 }
