@@ -45,6 +45,6 @@ func initializeNode(port int32, wg *sync.WaitGroup) {
 
 	// Waiting for a random duration of time before requesting access to critical section
 	time.Sleep(time.Second * 3)
-	time.Sleep(time.Duration(rand.Intn(10)+1) * time.Second)
+	time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second)
 	node.RequestAccessToCriticalSection(wg)
 }

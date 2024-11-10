@@ -108,9 +108,16 @@ func (s *NodeServer) RequestAccessToCriticalSection(wg1 *sync.WaitGroup) {
 }
 
 func (s *NodeServer) emulateCriticalSection() {
+	// Increments the lamport clock for entering the critical section
+	s.Clock.Step()
+	log.Println(fmt.Sprintf("Node %d is entering the critical section at lamport time %d", s.NodeID, s.Clock.Time))
+
 	nodeIsInCriticalSection = true
-	log.Println(fmt.Sprintf("Node %d is in the critical section at lamport time %d", s.NodeID, s.Clock.Time))
+	// Simulates doing something in the critical section
 	time.Sleep(2 * time.Second)
+
+	// Increments the lamport clock for leaving the critical section
+	s.Clock.Step()
 	log.Println(fmt.Sprintf("Node %d is leaving the critical section at lamport time %d", s.NodeID, s.Clock.Time))
 	nodeIsInCriticalSection = false
 }
@@ -134,10 +141,10 @@ func (s *NodeServer) RequestAccess(ctx context.Context, req *pb.AccessRequest) (
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	log.Printf("Received access request from Node %d with timestamp %d\n", req.NodeID, req.Timestamp)
-
 	// Updated and incremented local clock since this is a receive event
 	s.Clock.ReceiveEvent(req.Timestamp)
+
+	log.Printf("Node %d received access request from Node %d with timestamp %d\n", s.NodeID, req.NodeID, req.Timestamp)
 
 	// Checking if access should be granted to the requesting node
 	accessGranted := shouldHaveAccess(req.Timestamp, s.RequestedTimestamp)
