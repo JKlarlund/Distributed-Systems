@@ -54,7 +54,7 @@ func main() {
 	}
 
 	chat.HandleFatalError(err)
-	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 2)}
+	user = User{ID: response.UserID, Clock: chat.InitializeLClock(response.UserID, 1)}
 	updatedClock := user.Clock.SendEvent()
 	stream.Send(&pb.Message{UserID: user.ID, Timestamp: updatedClock, Body: "Connection has been established"})
 	chat.WriteToLog(logger, "User has sent message", user.Clock.Time, user.ID)

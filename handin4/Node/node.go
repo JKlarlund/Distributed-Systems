@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin4/Clock"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin4/protobufs"
-	discovery "github.com/fuhrmannb/node-discovery"
 	"google.golang.org/grpc"
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"sync"
@@ -28,32 +28,76 @@ var nodeIsWaitingForAccess = false
 var nodeIsInCriticalSection = false
 
 func InitializeDiscovery(node *NodeServer) {
-	//Using node-discovery package.
-	myNodeDiscovery, _ := discovery.Listen() //Listens to a default address, we don't have to insert anything.
 	hostname, _ := os.Hostname()
-	serviceURL, _ := url.Parse("http://" + hostname + ":" + fmt.Sprint(node.NodeID))
-	myNodeDiscovery.Register(serviceURL)
-	nodeEventChannel := make(chan discovery.NodeEvent)
-	myNodeDiscovery.Subscribe(nodeEventChannel)
-	go node.handleDiscoveryEvent(&nodeEventChannel)
+	serviceURL, _ := url.Parse(hostname + ":" + fmt.Sprint(node.NodeID))
+	node.selfAddress = serviceURL.String()
+	go node.broadcastNode()
+	node.handleDiscoveryEvent(node.NodeID)
+
 }
 
-func (s *NodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
-	log.Println("Før")
-	for event := range *channel {
-		log.Println("Efter")
-		nodeAddress := event.Service.Host
-		if event.Type == discovery.ServiceJoinEvent {
-			//Service has joined the cluster
-			if nodeAddress != s.selfAddress { // Exclude itself
-				s.initializeConnection(nodeAddress)
-				log.Printf("Node joined: %s", nodeAddress)
-			}
+func (s *NodeServer) broadcastNode() {
+	conn, err := net.Dial("udp", "255.255.255.255:54321")
+	if err != nil {
+		fmt.Println("Something went wrong with broadcasting node")
+	}
+	defer conn.Close()
+	// Broadcast the node's information (e.g., IP address and NodeID)
+	for {
+		message := fmt.Sprintf("NodeID:%d, Address:%s", s.NodeID, s.selfAddress)
+		_, err := fmt.Fprintf(conn, message)
+		if err != nil {
+			log.Printf("Error broadcasting: %v", err)
+			return
 		}
-		if event.Type == discovery.ServiceLeaveEvent {
-			//Service has left the cluser.
-			s.severConnection(nodeAddress)
-			log.Printf("Node left: %s", nodeAddress)
+
+		// Wait before broadcasting again (e.g., every 2 seconds)
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func (s *NodeServer) handleDiscoveryEvent(id int32) {
+	port := fmt.Sprintf(":%d", 54321+id)
+
+	addr, err := net.ResolveUDPAddr("udp", port) // Listen on UDP port 54321
+	if err != nil {
+		log.Printf("Error resolving address: %v", err)
+		return
+	}
+
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		log.Printf("Error creating UDP listener: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	buf := make([]byte, 1024) // Buffer for incoming data
+	for {
+		// Read data from the UDP connection
+		n, remoteAddr, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			log.Printf("Error reading from UDP: %v", err)
+			continue
+		}
+
+		// Process the received message
+		message := string(buf[:n])
+		log.Printf("Received message from %s: %s", remoteAddr, message)
+
+		// Extract the NodeID and Address (assuming the message format is consistent)
+		var nodeID int
+		var nodeAddress string
+		_, err = fmt.Sscanf(message, "NodeID:%d, Address:%s", &nodeID, &nodeAddress)
+		if err != nil {
+			log.Printf("Error parsing message: %v", err)
+			continue
+		}
+
+		// Avoid responding to itself
+		if nodeAddress != s.selfAddress {
+			// Handle the discovery of the other node
+			s.initializeConnection(remoteAddr.String())
 		}
 	}
 }
@@ -62,10 +106,14 @@ func (s *NodeServer) handleDiscoveryEvent(channel *chan discovery.NodeEvent) {
 func (s *NodeServer) initializeConnection(target string) {
 	_, ok := s.Clients[target]
 	if !ok {
-		conn, err := grpc.Dial(target, grpc.WithInsecure(), grpc.WithBlock())
+
+		conn, err := grpc.Dial(target, grpc.WithInsecure())
+		fmt.Println(target)
+
 		if err != nil {
 			log.Println(err.Error())
 		}
+
 		s.Clients[target] = pb.NewConsensusClient(conn)
 
 	}
