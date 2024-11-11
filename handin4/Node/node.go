@@ -81,13 +81,16 @@ func (s *NodeServer) LeaveCriticalSection() {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
+	release := &pb.ReleaseRequest{
+		NodeID:    s.NodeID,
+		Timestamp: s.Clock.SendEvent(),
+	}
+
 	// Broadcast a release message to all nodes (without expecting a response)
 	for _, client := range s.Clients {
 		go func(client pb.ConsensusClient) {
-			_, err := (client).Release(context.Background(), &pb.ReleaseRequest{
-				NodeID:    s.NodeID,
-				Timestamp: s.Clock.Time,
-			})
+
+			_, err := (client).Release(context.Background(), release)
 			if err != nil {
 				log.Printf("Error broadcasting release from Node %d: %v", s.NodeID, err)
 			}
@@ -102,6 +105,8 @@ func (s *NodeServer) Release(ctx context.Context, req *pb.ReleaseRequest) (*pb.R
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
+	// Receive event
+	s.Clock.ReceiveEvent(req.Timestamp)
 	// Remove the request from the local priority queue
 	for _, request := range s.Queue {
 		if request.NodeID == req.NodeID {
@@ -109,9 +114,8 @@ func (s *NodeServer) Release(ctx context.Context, req *pb.ReleaseRequest) (*pb.R
 			break
 		}
 	}
-
 	// Log the release reception
-	log.Printf("Node %d received release from Node %d at Lamport time %d\n", s.NodeID, req.NodeID, req.Timestamp)
+	log.Printf("Node %d received release from Node %d at Lamport time %d\n", s.NodeID, req.NodeID, s.Clock.Time)
 
 	// Return a response (optional)
 	return &pb.ReleaseResponse{Ack: true}, nil
@@ -173,8 +177,6 @@ func (s *NodeServer) requestSingleAccess(client *pb.ConsensusClient, request *pb
 	context, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Incrementing the lamport clock for each send event
-	s.Clock.SendEvent()
 	message, err := (*client).RequestAccess(context, request)
 	if err != nil {
 		log.Printf("Error in Request Single Access to %s: %v", request.Address, err)
