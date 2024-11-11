@@ -1,7 +1,6 @@
 package Node
 
 import (
-	"log"
 	_ "sync"
 )
 
@@ -44,9 +43,6 @@ func (q *Queue) GetLowest() int32 {
 			currentLowest = tempTimestamp
 			currentBestNodeID = (*q)[i].NodeID
 		}
-	}
-	for i := 0; i < len(*q); i++ {
-		log.Printf("LOWEST NODE IS: %v, with timestamp", (*q)[i].NodeID, (*q)[i].Timestamp)
 	}
 
 	return currentBestNodeID

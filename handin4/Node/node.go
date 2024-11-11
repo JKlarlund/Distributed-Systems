@@ -106,7 +106,6 @@ func (s *NodeServer) Release(ctx context.Context, req *pb.ReleaseRequest) (*pb.R
 	for _, request := range s.Queue {
 		if request.NodeID == req.NodeID {
 			s.Queue.Remove(req.NodeID)
-			log.Printf("Node: %d was removed from the queue", request.NodeID)
 			break
 		}
 	}
@@ -145,7 +144,6 @@ func (s *NodeServer) RequestAccessToCriticalSection(mainWG *sync.WaitGroup) {
 }
 
 func (s *NodeServer) tryAccessCriticalSection(mainWG *sync.WaitGroup) {
-	log.Printf("TRYING TO EMULATE NODE: %d", s.NodeID)
 	if len(s.Queue) > 0 && s.Queue.GetLowest() == s.NodeID {
 		s.emulateCriticalSection(mainWG) // Method to handle entry into the critical section
 		return
