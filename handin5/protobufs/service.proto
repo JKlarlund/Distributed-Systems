@@ -3,5 +3,24 @@ syntax = "proto3";
 option go_package = "protobufs/";
 
 service auctionService {
+    rpc Bid(BidRequest) returns (BidResponse);
+    rpc Result(ResultRequest) returns (ResultResponse);
+}
 
+message BidRequest {
+    int32 amount = 1; // Bid amount
+    string bidder_id = 2; // The ID of the bidder
+}
+
+message BidResponse {
+    string status = 1; // The result of the bid E.g Success or Fail
+}
+
+message ResultRequest {}
+
+message ResultResponse {
+    bool auction_ended = 1;
+    int32 highest_bid = 2;
+    string highest_bidder = 3;
+    string message = 4;
 }
