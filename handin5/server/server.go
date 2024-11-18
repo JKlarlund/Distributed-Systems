@@ -8,4 +8,9 @@ import (
 type Server struct {
 	pb.UnimplementedAuctionServiceServer
 	Clock *Clock.LClock
+	ID    int32
+}
+
+func main() {
+
 }
