@@ -5,6 +5,9 @@ option go_package = "protobufs/";
 service auctionService {
     rpc Bid(BidRequest) returns (BidResponse);
     rpc Result(ResultRequest) returns (ResultResponse);
+    rpc AuctionStream(stream AuctionMessage) returns (stream AuctionMessage);
+    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Leave(LeaveRequest) returns (LeaveResponse);
 }
 
 message BidRequest {
@@ -23,4 +26,29 @@ message ResultResponse {
     int32 highest_bid = 2;
     string highest_bidder = 3;
     string message = 4;
+}
+
+message JoinRequest {
+    string user_name = 1; // The name or ID of the user joining
+}
+
+message JoinResponse {
+    string message = 1;
+    int32 userID = 2;
+    int32 timetsamp = 3;
+}
+
+message LeaveRequest {
+    int32 userID = 1;
+}
+
+message LeaveResponse {
+    string message = 1;
+    int32 timestamp = 2;
+}
+
+message AuctionMessage {
+    int32 userID = 1; // ID of the user involved in the message
+    string content = 2; // Content of the message (e.g., "New highest bid: $100")
+    int32 timestamp = 3; // Logical or real-time timestamp of the message
 }
