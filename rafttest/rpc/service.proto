@@ -5,7 +5,7 @@ import "google/protobuf/empty.proto";
 
 
 service Raft {
-  rpc Heartbeat(google.protobuf.Empty) returns (stream google.protobuf.Empty);
+  rpc Heartbeat(google.protobuf.Empty) returns (google.protobuf.Empty);
 }
 
 

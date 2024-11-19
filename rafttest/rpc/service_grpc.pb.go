@@ -27,7 +27,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RaftClient interface {
-	Heartbeat(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[emptypb.Empty], error)
+	Heartbeat(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type raftClient struct {
@@ -38,30 +38,21 @@ func NewRaftClient(cc grpc.ClientConnInterface) RaftClient {
 	return &raftClient{cc}
 }
 
-func (c *raftClient) Heartbeat(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[emptypb.Empty], error) {
+func (c *raftClient) Heartbeat(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Raft_ServiceDesc.Streams[0], Raft_Heartbeat_FullMethodName, cOpts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, Raft_Heartbeat_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[emptypb.Empty, emptypb.Empty]{ClientStream: stream}
-	if err := x.ClientStream.SendMsg(in); err != nil {
-		return nil, err
-	}
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	return x, nil
+	return out, nil
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Raft_HeartbeatClient = grpc.ServerStreamingClient[emptypb.Empty]
 
 // RaftServer is the server API for Raft service.
 // All implementations must embed UnimplementedRaftServer
 // for forward compatibility.
 type RaftServer interface {
-	Heartbeat(*emptypb.Empty, grpc.ServerStreamingServer[emptypb.Empty]) error
+	Heartbeat(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRaftServer()
 }
 
@@ -72,8 +63,8 @@ type RaftServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRaftServer struct{}
 
-func (UnimplementedRaftServer) Heartbeat(*emptypb.Empty, grpc.ServerStreamingServer[emptypb.Empty]) error {
-	return status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
+func (UnimplementedRaftServer) Heartbeat(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
 }
 func (UnimplementedRaftServer) mustEmbedUnimplementedRaftServer() {}
 func (UnimplementedRaftServer) testEmbeddedByValue()              {}
@@ -96,16 +87,23 @@ func RegisterRaftServer(s grpc.ServiceRegistrar, srv RaftServer) {
 	s.RegisterService(&Raft_ServiceDesc, srv)
 }
 
-func _Raft_Heartbeat_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(emptypb.Empty)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
+func _Raft_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
 	}
-	return srv.(RaftServer).Heartbeat(m, &grpc.GenericServerStream[emptypb.Empty, emptypb.Empty]{ServerStream: stream})
+	if interceptor == nil {
+		return srv.(RaftServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Raft_Heartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RaftServer).Heartbeat(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
 }
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type Raft_HeartbeatServer = grpc.ServerStreamingServer[emptypb.Empty]
 
 // Raft_ServiceDesc is the grpc.ServiceDesc for Raft service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -113,13 +111,12 @@ type Raft_HeartbeatServer = grpc.ServerStreamingServer[emptypb.Empty]
 var Raft_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "Raft",
 	HandlerType: (*RaftServer)(nil),
-	Methods:     []grpc.MethodDesc{},
-	Streams: []grpc.StreamDesc{
+	Methods: []grpc.MethodDesc{
 		{
-			StreamName:    "Heartbeat",
-			Handler:       _Raft_Heartbeat_Handler,
-			ServerStreams: true,
+			MethodName: "Heartbeat",
+			Handler:    _Raft_Heartbeat_Handler,
 		},
 	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "rpc/service.proto",
 }
