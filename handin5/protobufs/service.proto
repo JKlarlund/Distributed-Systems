@@ -29,13 +29,12 @@ message ResultResponse {
 }
 
 message JoinRequest {
-    string user_name = 1; // The name or ID of the user joining
 }
 
 message JoinResponse {
     string message = 1;
     int32 userID = 2;
-    int32 timetsamp = 3;
+    int32 timestamp = 3;
 }
 
 message LeaveRequest {
