@@ -11,7 +11,7 @@ service auctionService {
 
 message BidRequest {
     int32 amount = 1; // Bid amount
-    string bidder_id = 2; // The ID of the bidder
+    int32 bidder_id = 2; // The ID of the bidder
 }
 
 message BidResponse {
@@ -21,7 +21,7 @@ message BidResponse {
 message AuctionStream {
     bool auction_ended = 1;
     int32 highest_bid = 2;
-    string highest_bidder = 3;
+    int32  highest_bidder = 3;
     string message = 4;
 }
 
@@ -47,4 +47,5 @@ message AuctionMessage {
     int32 userID = 1; // ID of the user involved in the message
     string content = 2; // Content of the message (e.g., "New highest bid: $100")
     int32 timestamp = 3; // Logical or real-time timestamp of the message
+    int32 bid = 4;
 }
