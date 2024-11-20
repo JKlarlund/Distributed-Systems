@@ -10,7 +10,7 @@ import (
 
 type Client struct {
 	Clock *Clock.LClock
-	ID    int32
+<	ID    int32
 }
 
 func main() {
