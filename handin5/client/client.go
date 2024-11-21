@@ -33,6 +33,7 @@ func main() {
 	if err != nil {
 		log.Printf("User failed to join the AuctionStream")
 	}
+	clientInstance.Clock.ReceiveEvent(response.Timestamp)
 
 	stream, err := client.AuctionStream(context.Background())
 	if err == nil {
@@ -45,6 +46,13 @@ func main() {
 	go readInput(client)
 
 	select {}
+
+	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID})
+	if err != nil {
+		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
+	}
+	clientInstance.Clock.ReceiveEvent(LeaveResponse.Timestamp)
+	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
 }
 
 func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
@@ -69,7 +77,7 @@ func readInput(client pb.AuctionServiceClient) {
 		}
 		bid := int32(bidInt)
 		clientInstance.Clock.SendEvent()
-		log.Printf("Sending a ")
+		log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
 		_, err = client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID})
 		if err != nil {
 			log.Printf("Error sending bid: %v", err)
