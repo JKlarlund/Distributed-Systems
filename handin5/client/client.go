@@ -93,7 +93,10 @@ func readInput(client pb.AuctionServiceClient) {
 }
 
 func getResult(client pb.AuctionServiceClient) {
-	response, err := client.Result(context.Background(), &pb.ResultRequest{})
+	response, err := client.Result(context.Background(), &pb.ResultRequest{
+		UserID:    clientInstance.ID,
+		Timestamp: clientInstance.Clock.SendEvent(),
+	})
 	if err != nil {
 		log.Printf("Getting the result caused an error: %v", err)
 		return
@@ -104,5 +107,4 @@ func getResult(client pb.AuctionServiceClient) {
 	} else {
 		log.Printf("Current highest bid is: %d by user: %d", response.HighestBid, response.HighestBidder)
 	}
-
 }
