@@ -27,7 +27,6 @@ var port *int = flag.Int("Port", 1337, "Server Port")
 
 /*
 Sets up a server node. You must specify via flag whether it's the primary or not, by calling it with flag -isPrimary true/false
-Server nodes reserve ports 5000 and 5001.
 */
 func main() {
 	isPrimary := *flag.Bool("isPrimary", false, "Is the node the primary server?")
@@ -37,20 +36,17 @@ func main() {
 		log.Fatalf("Failed to listen on port %d: %v", *port, err)
 	}
 
-	selfAddress := fmt.Sprintf("127.0.0.1:5000")
 	id := 0
 	if !isPrimary {
-		selfAddress = fmt.Sprintf("127.0.0.1:5001")
 		id = 1
 	}
 
 	server := grpc.NewServer()
 
 	pb.RegisterAuctionServiceServer(server, &Server{
-		selfAddress: selfAddress,
-		Clock:       Clock.InitializeLClock(0),
-		ID:          id,
-		bidders:     make(map[int32]pb.AuctionService_AuctionStreamServer),
+		Clock:   Clock.InitializeLClock(0),
+		ID:      id,
+		bidders: make(map[int32]pb.AuctionService_AuctionStreamServer),
 	})
 	log.Printf("Server is listening on port: %d", *port)
 	if err := server.Serve(listener); err != nil {
