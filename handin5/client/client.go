@@ -9,8 +9,10 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type Client struct {
@@ -25,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("User failed connecting to auction: %v", err)
 	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	log.Printf("Trying to connect to the auction at lamport: %v", 0)
 
 	client := pb.NewAuctionServiceClient(conn)
@@ -45,13 +51,14 @@ func main() {
 	go listenToStream(stream)
 	go readInput(client)
 
-	select {}
+	<-sigs
 
 	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID})
 	if err != nil {
 		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
 	}
 	clientInstance.Clock.ReceiveEvent(LeaveResponse.Timestamp)
+	stream.CloseSend()
 	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
 }
 
