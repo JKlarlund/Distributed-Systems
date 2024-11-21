@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
@@ -11,10 +12,12 @@ import (
 
 type Server struct {
 	pb.UnimplementedAuctionServiceServer
-	selfAddress string
-	Clock       *Clock.LClock
-	ID          int
-	bidders     map[int32](pb.AuctionService_AuctionStreamServer)
+	selfAddress          string
+	Clock                *Clock.LClock
+	ID                   int
+	bidders              map[int32](pb.AuctionService_AuctionStreamServer)
+	currentHighestBid    int32
+	currentHighestBidder int32
 }
 
 /*
@@ -70,14 +73,18 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 }
 
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
+	if bidRequest.Amount > s.currentHighestBid {
+		s.currentHighestBid = bidRequest.Amount
+		s.currentHighestBidder = bidRequest.BidderId
+	}
 
-	var broadcastMessage string = fmt.Sprintf("User %d has bid amount %d at time xx", bidRequest.BidderId, bidRequest.Amount)
+	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, bidRequest.Timestamp)
 
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
 		Timestamp: s.Clock.SendEvent(),
 		UserID:    bidRequest.BidderId,
-		Content:   broadcastMessage,
+		Message:   broadcastMessage,
 	}
 
 	log.Printf(broadcastMessage)
@@ -89,4 +96,15 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 
 func formatBidMessage(message *pb.AuctionMessage) string {
 	return fmt.Sprintf("Server has received request from user %d to bid %d at time %d", message.UserID, message.Bid, message.Timestamp)
+}
+
+func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultResponse, error) {
+	s.Clock.ReceiveEvent(req.Timestamp)
+
+	return &pb.ResultResponse{
+		AuctionEnded:  false, // WE NEED TO SET THIS WHEN WE GET OUR AUCTION LOGIC IN PLACE
+		HighestBidder: s.currentHighestBidder,
+		HighestBid:    s.currentHighestBid,
+		Timestamp:     s.Clock.SendEvent(),
+	}, nil
 }
