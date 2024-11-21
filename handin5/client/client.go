@@ -91,3 +91,7 @@ func readInput(client pb.AuctionServiceClient) {
 		}
 	}
 }
+
+func getResult(client pb.AuctionServiceClient) {
+	response, err = client.Result(context.Background(), &pb.ResultRequest{})
+}
