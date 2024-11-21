@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
 	"log"
+	"net"
 )
 
 type Server struct {
@@ -20,6 +21,8 @@ type Server struct {
 	currentHighestBidder int32
 }
 
+var port *int = flag.Int("Port", 1337, "Server Port")
+
 /*
 Sets up a server node. You must specify via flag whether it's the primary or not, by calling it with flag -isPrimary true/false
 Server nodes reserve ports 5000 and 5001.
@@ -27,12 +30,14 @@ Server nodes reserve ports 5000 and 5001.
 func main() {
 	isPrimary := *flag.Bool("isPrimary", false, "Is the node the primary server?")
 	flag.Parse()
-	var selfAddress string
-	var id int
-	if isPrimary {
-		selfAddress = fmt.Sprintf("127.0.0.1:5000")
-		id = 0
-	} else {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		log.Printf("There was an error getting the listener: %v", err)
+	}
+
+	selfAddress := fmt.Sprintf("127.0.0.1:5000")
+	id := 0
+	if !isPrimary {
 		selfAddress = fmt.Sprintf("127.0.0.1:5001")
 		id = 1
 	}
@@ -45,6 +50,8 @@ func main() {
 		ID:          id,
 		bidders:     make(map[int32]pb.AuctionService_AuctionStreamServer),
 	})
+	log.Printf("Server is listening on port: %d", *port)
+	server.Serve(listener)
 
 }
 
