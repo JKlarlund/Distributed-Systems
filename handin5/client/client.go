@@ -1,44 +1,24 @@
 package client
 
 import (
+	"bufio"
 	"context"
+	"fmt"
 	Clock "github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 )
 
 type Client struct {
 	Clock *Clock.LClock
-<	ID    int32
+	ID    int32
 }
 
-func (c Client) Bid(ctx context.Context, in *pb.BidRequest, opts ...grpc.CallOption) (*pb.BidResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c Client) Result(ctx context.Context, in *pb.ResultRequest, opts ...grpc.CallOption) (*pb.ResultResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c Client) AuctionStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[pb.AuctionMessage, pb.AuctionMessage], error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c Client) Join(ctx context.Context, in *pb.JoinRequest, opts ...grpc.CallOption) (*pb.JoinResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c Client) Leave(ctx context.Context, in *pb.LeaveRequest, opts ...grpc.CallOption) (*pb.LeaveResponse, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-var client Client
+var clientInstance Client
 
 func main() {
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
@@ -59,6 +39,37 @@ func main() {
 		log.Printf("Connection was established as user: %d", response.UserID)
 
 	}
-	client = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
+	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
 
+	go listenToStream(stream)
+	readInput(client)
+}
+
+func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			log.Printf("Error receiving message from stream: %v", err)
+			return
+		}
+		log.Printf("Server: %v", msg)
+	}
+}
+
+func readInput(client pb.AuctionServiceClient) {
+	for {
+		reader := bufio.NewReader(os.Stdin)
+		message, err := reader.ReadString('\n')
+		bidInt, err := strconv.Atoi(strings.TrimSpace(message))
+		if err != nil {
+			fmt.Println("\033[1;31mBid not sent since the input is not a valid integer\u001B[0m")
+			continue
+		}
+		bid := int32(bidInt)
+		clientInstance.Clock.SendEvent()
+		_, err = client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID})
+		if err != nil {
+			log.Printf("Error sending bid: %v", err)
+		}
+	}
 }
