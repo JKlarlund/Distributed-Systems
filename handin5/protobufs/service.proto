@@ -4,6 +4,7 @@ option go_package = "protobufs/";
 
 service auctionService {
     rpc Bid(BidRequest) returns (BidResponse);
+    rpc Result(ResultRequest) returns (ResultResponse);
     rpc AuctionStream(stream AuctionMessage) returns (stream AuctionMessage);
     rpc Join(JoinRequest) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
@@ -16,6 +17,15 @@ message BidRequest {
 
 message BidResponse {
     string status = 1; // The result of the bid E.g Success or Fail
+}
+
+message ResultRequest {}
+
+message ResultResponse {
+    bool auction_ended = 1; // Whether the auction has ended
+    int32 highest_bid = 2; // Current highest bid
+    int32 highest_bidder = 3; // ID of the highest bidder
+    string message = 4; // Additional status message
 }
 
 message AuctionStream {
