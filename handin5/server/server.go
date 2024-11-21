@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"time"
 )
 
 type Server struct {
@@ -19,6 +20,7 @@ type Server struct {
 	bidders              map[int32](pb.AuctionService_AuctionStreamServer)
 	currentHighestBid    int32
 	currentHighestBidder int32
+	auctionEnded         bool
 }
 
 var port *int = flag.Int("Port", 1337, "Server Port")
@@ -32,7 +34,7 @@ func main() {
 	flag.Parse()
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Printf("There was an error getting the listener: %v", err)
+		log.Fatalf("Failed to listen on port %d: %v", *port, err)
 	}
 
 	selfAddress := fmt.Sprintf("127.0.0.1:5000")
@@ -51,7 +53,9 @@ func main() {
 		bidders:     make(map[int32]pb.AuctionService_AuctionStreamServer),
 	})
 	log.Printf("Server is listening on port: %d", *port)
-	server.Serve(listener)
+	if err := server.Serve(listener); err != nil {
+		log.Fatalf("Failed to serve: %v", err)
+	}
 
 }
 
@@ -80,25 +84,31 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 }
 
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
-	if bidRequest.Amount > s.currentHighestBid {
-		s.currentHighestBid = bidRequest.Amount
-		s.currentHighestBidder = bidRequest.BidderId
-	}
-
 	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, bidRequest.Timestamp)
-
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
 		Timestamp: s.Clock.SendEvent(),
 		UserID:    bidRequest.BidderId,
 		Message:   broadcastMessage,
 	}
-
 	log.Printf(broadcastMessage)
-
 	for _, stream := range s.bidders {
 		stream.Send(&bid)
 	}
+}
+
+func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, error) {
+	s.Clock.ReceiveEvent(req.Timestamp)
+	if req.Amount > s.currentHighestBid {
+		s.currentHighestBid = req.Amount
+		s.currentHighestBidder = req.BidderId
+		s.broadcastBid(req)
+		return &pb.BidResponse{
+			Status:    "Success",
+			Timestamp: s.Clock.SendEvent(),
+		}, nil
+	}
+	return &pb.BidResponse{Status: "fail", Timestamp: s.Clock.SendEvent()}, nil
 }
 
 func formatBidMessage(message *pb.AuctionMessage) string {
@@ -115,4 +125,10 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 		HighestBid:    s.currentHighestBid,
 		Timestamp:     s.Clock.SendEvent(),
 	}, nil
+}
+
+func startAuctionTimer(s *Server, duration time.Duration) {
+	time.Sleep(duration)
+	s.auctionEnded = true
+	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
 }
