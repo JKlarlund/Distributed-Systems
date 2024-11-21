@@ -42,7 +42,9 @@ func main() {
 	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
 
 	go listenToStream(stream)
-	readInput(client)
+	go readInput(client)
+
+	select {}
 }
 
 func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
