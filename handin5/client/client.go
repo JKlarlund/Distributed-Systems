@@ -69,6 +69,7 @@ func readInput(client pb.AuctionServiceClient) {
 		}
 		bid := int32(bidInt)
 		clientInstance.Clock.SendEvent()
+		log.Printf("Sending a ")
 		_, err = client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID})
 		if err != nil {
 			log.Printf("Error sending bid: %v", err)
