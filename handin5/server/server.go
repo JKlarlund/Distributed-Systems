@@ -100,6 +100,7 @@ func formatBidMessage(message *pb.AuctionMessage) string {
 
 func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
+	log.Printf("Server has received a result request at lamport time: %d", s.Clock.Time)
 
 	return &pb.ResultResponse{
 		AuctionEnded:  false, // WE NEED TO SET THIS WHEN WE GET OUR AUCTION LOGIC IN PLACE
