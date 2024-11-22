@@ -55,8 +55,6 @@ func main() {
 
 }
 
-/*
- */
 func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) error {
 	msg, err := stream.Recv()
 	s.Clock.ReceiveEvent(msg.Timestamp)
