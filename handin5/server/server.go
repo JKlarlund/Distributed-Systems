@@ -98,7 +98,12 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 	}
 	log.Printf(broadcastMessage)
 	for _, bidder := range s.bidders {
-		bidder.Stream.Send(&bid)
+		if bidder != nil && bidder.Stream != nil {
+			err := bidder.Stream.Send(&bid)
+			if err != nil {
+				log.Printf("Error sending bid to user %d: %v", bid.UserID, err)
+			}
+		}
 	}
 }
 
@@ -109,11 +114,11 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 		s.currentHighestBidder = req.BidderId
 		s.broadcastBid(req)
 		return &pb.BidResponse{
-			Status:    "Success",
+			Success:   true,
 			Timestamp: s.Clock.SendEvent(),
 		}, nil
 	}
-	return &pb.BidResponse{Status: "fail", Timestamp: s.Clock.SendEvent()}, nil
+	return &pb.BidResponse{Success: false, Timestamp: s.Clock.SendEvent()}, nil
 }
 
 func formatBidMessage(message *pb.AuctionMessage) string {

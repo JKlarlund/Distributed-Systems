@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"fmt"
 	Clock "github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
@@ -35,7 +34,7 @@ func main() {
 
 	client := pb.NewAuctionServiceClient(conn)
 
-	response, err := client.Join(context.Background(), &pb.JoinRequest{})
+	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
 		log.Printf("User failed to join the AuctionStream")
 	}
@@ -76,17 +75,36 @@ func readInput(client pb.AuctionServiceClient) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, err := reader.ReadString('\n')
-		bidInt, err := strconv.Atoi(strings.TrimSpace(message))
 		if err != nil {
-			fmt.Println("\033[1;31mBid not sent since the input is not a valid integer\u001B[0m")
+			log.Printf("Error reading input: %v", err)
 			continue
 		}
-		bid := int32(bidInt)
-		clientInstance.Clock.SendEvent()
-		log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
-		_, err = client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID})
-		if err != nil {
-			log.Printf("Error sending bid: %v", err)
+		message = strings.TrimSpace(message)
+		parts := strings.SplitN(message, " ", 2)
+		command := strings.ToLower(parts[0])
+
+		switch command {
+		case "bid":
+			if len(parts) < 2 {
+				log.Printf("Invalid bid command. Usage: bid <amount>")
+				continue
+			}
+			bidInt, err := strconv.Atoi(parts[1])
+			if err != nil {
+				log.Printf("\033[1;31mBid not sent since the input is not a valid integer\u001B[0m")
+				continue
+			}
+			bid := int32(bidInt)
+			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
+			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
+			if err != nil || !response.Success {
+				log.Printf("Error sending bid: %v", err)
+			}
+			clientInstance.Clock.ReceiveEvent(response.Timestamp)
+		case "result":
+			getResult(client)
+		default:
+			log.Printf("Unknow command: %v", command)
 		}
 	}
 }
