@@ -140,10 +140,6 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 	return &pb.BidResponse{Success: false, Timestamp: s.Clock.SendEvent()}, nil
 }
 
-func formatBidMessage(message *pb.AuctionMessage) string {
-	return fmt.Sprintf("Server has received request from user %d to bid %d at time %d", message.UserID, message.Bid, message.Timestamp)
-}
-
 func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
 	log.Printf("Server has received a result request at lamport time: %d", s.Clock.Time)
