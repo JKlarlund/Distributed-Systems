@@ -6,6 +6,7 @@ import (
 	Clock "github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -43,7 +44,15 @@ func main() {
 
 	stream, err := client.AuctionStream(context.Background())
 	if err == nil {
-		log.Printf("Connection was established as user: %d", response.UserID)
+		log.Printf("Connection was established as user: %d at lamport: %d", clientInstance.ID, clientInstance.Clock.Time)
+	}
+	err = stream.Send(&pb.AuctionMessage{
+		UserID:    clientInstance.ID,
+		Timestamp: clientInstance.Clock.SendEvent(),
+		Message:   "Initial connection message",
+	})
+	if err != nil {
+		log.Printf("Error sending initial message: %v", err)
 	}
 
 	go listenToStream(stream)
@@ -62,12 +71,21 @@ func main() {
 
 func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
 	for {
-		msg, err := stream.Recv()
+		in, err := stream.Recv()
 		if err != nil {
-			log.Printf("Error receiving message from stream: %v", err)
+			if err == io.EOF {
+				log.Printf("Server closed the stream.")
+				return
+			}
+			log.Printf("Error while receiving message: %v", err)
 			return
 		}
-		log.Printf("Server: %v", msg)
+
+		// Process the incoming message
+		if in != nil {
+			clientInstance.Clock.ReceiveEvent(in.Timestamp)
+			log.Printf("%v", in.Message)
+		}
 	}
 }
 

@@ -24,7 +24,7 @@ type Server struct {
 	bidders              map[int32]*Bidder
 	currentHighestBid    int32
 	currentHighestBidder int32
-	auctionEnded         bool
+	auctionIsActive      bool
 }
 
 var port *int = flag.Int("Port", 1337, "Server Port")
@@ -61,26 +61,34 @@ func main() {
 
 func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) error {
 	msg, err := stream.Recv()
-
 	if err != nil {
 		log.Println(err.Error())
 		return err
 	}
 
 	s.Clock.ReceiveEvent(msg.Timestamp)
+	log.Printf("First messages was received from the stream to establish a connection at lamport: %d", s.Clock.Time)
 
-	if s.bidders[msg.UserID] == nil {
-		log.Printf("User %d has joined the stream at lamport time: %d", msg.UserID, msg.Timestamp)
-		s.bidders[msg.UserID] = &Bidder{Stream: stream}
+	user, exists := s.bidders[msg.UserID]
+	if !exists || user == nil {
+		log.Printf("Registering new user %d for the stream at lamport time: %d", msg.UserID, s.Clock.Time)
+		user = &Bidder{}
+		s.bidders[msg.UserID] = user
 	}
 
+	user.Stream = stream
+	log.Printf("User %d is now connected to the stream at lamport time: %d", msg.UserID, s.Clock.Time)
+
 	for {
-		msg, _ := stream.Recv()
+		msg, err := stream.Recv()
 		if err != nil {
-			log.Printf(err.Error())
+			log.Printf("Error receiving message from user %d: %v", msg.UserID, err)
 			return err
 		}
 		s.Clock.ReceiveEvent(msg.Timestamp)
+		log.Printf("Received bid from user %d: %d at lamport time: %d", msg.UserID, msg.Bid, s.Clock.Time)
+
+		// Broadcasting the bid to all users
 		s.broadcastBid(&pb.BidRequest{
 			Amount:   msg.Bid,
 			BidderId: msg.UserID,
@@ -97,11 +105,12 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 		Message:   broadcastMessage,
 	}
 	log.Printf(broadcastMessage)
-	for _, bidder := range s.bidders {
-		if bidder != nil && bidder.Stream != nil {
+	for userID, bidder := range s.bidders {
+		if bidder != nil && bidder.Stream != nil && userID != bidRequest.BidderId {
+			log.Printf("Sending bid to user: %d", userID)
 			err := bidder.Stream.Send(&bid)
 			if err != nil {
-				log.Printf("Error sending bid to user %d: %v", bid.UserID, err)
+				log.Printf("Error sending bid to user %d: %v", userID, err)
 			}
 		}
 	}
@@ -130,7 +139,7 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 	log.Printf("Server has received a result request at lamport time: %d", s.Clock.Time)
 
 	return &pb.ResultResponse{
-		AuctionEnded:  s.auctionEnded,
+		AuctionEnded:  s.auctionIsActive,
 		HighestBidder: s.currentHighestBidder,
 		HighestBid:    s.currentHighestBid,
 		Timestamp:     s.Clock.SendEvent(),
@@ -145,8 +154,14 @@ func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResp
 
 func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
-	newUserID := int32(len(s.bidders) + 1) // Generate a new user ID
-	s.bidders[newUserID] = &Bidder{}       // Add the new user to the bidders map
+
+	newUserID := int32(len(s.bidders) + 1)
+	if _, exists := s.bidders[newUserID]; !exists {
+		log.Printf("Registering new user %d in the bidders map.", newUserID)
+		s.bidders[newUserID] = &Bidder{}
+	} else {
+		log.Printf("User %d already exists in the bidders map.", newUserID)
+	}
 
 	log.Printf("User %d has joined the auction at lamport time: %d", newUserID, s.Clock.Time)
 
@@ -156,8 +171,9 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	}, nil
 }
 
-func startAuctionTimer(s *Server, duration time.Duration) {
-	time.Sleep(duration)
-	s.auctionEnded = true
+func (s *Server) startAuctionTimer(duration time.Duration) {
+	s.auctionIsActive = true
+	//s.time.Sleep(duration)
+	s.auctionIsActive = false
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
 }
