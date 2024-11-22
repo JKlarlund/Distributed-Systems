@@ -65,7 +65,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 		log.Println(err.Error())
 	}
 	if s.bidders[msg.UserID] == nil {
-		log.Printf("User %d has joined the stream at time with bid %d")
+		log.Printf("User %d has joined the stream at lamport time: %d", msg.UserID, msg.Timestamp)
 		s.bidders[msg.UserID] = stream
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 	log.Printf("Server has received a result request at lamport time: %d", s.Clock.Time)
 
 	return &pb.ResultResponse{
-		AuctionEnded:  false, // WE NEED TO SET THIS WHEN WE GET OUR AUCTION LOGIC IN PLACE
+		AuctionEnded:  s.auctionEnded,
 		HighestBidder: s.currentHighestBidder,
 		HighestBid:    s.currentHighestBid,
 		Timestamp:     s.Clock.SendEvent(),
