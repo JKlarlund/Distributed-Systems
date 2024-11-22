@@ -61,11 +61,14 @@ func main() {
 
 func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) error {
 	msg, err := stream.Recv()
-	s.Clock.ReceiveEvent(msg.Timestamp)
 
 	if err != nil {
 		log.Println(err.Error())
+		return err
 	}
+
+	s.Clock.ReceiveEvent(msg.Timestamp)
+
 	if s.bidders[msg.UserID] == nil {
 		log.Printf("User %d has joined the stream at lamport time: %d", msg.UserID, msg.Timestamp)
 		s.bidders[msg.UserID] = &Bidder{Stream: stream}
@@ -73,6 +76,10 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 
 	for {
 		msg, _ := stream.Recv()
+		if err != nil {
+			log.Printf(err.Error())
+			return err
+		}
 		s.Clock.ReceiveEvent(msg.Timestamp)
 		s.broadcastBid(&pb.BidRequest{
 			Amount:   msg.Bid,
@@ -127,6 +134,7 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
+	log.Printf("User: %d has left the auction at lamport time: %d", req.UserID, req.Timestamp)
 	return &pb.LeaveResponse{Timestamp: s.Clock.SendEvent()}, nil
 }
 
