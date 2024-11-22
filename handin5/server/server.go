@@ -126,7 +126,8 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 }
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
-
+	s.Clock.ReceiveEvent(req.Timestamp)
+	return &pb.LeaveResponse{Timestamp: s.Clock.SendEvent()}, nil
 }
 
 func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {

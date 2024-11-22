@@ -48,8 +48,7 @@ message LeaveRequest {
 }
 
 message LeaveResponse {
-    string message = 1;
-    int32 timestamp = 2;
+    int32 timestamp = 1;
 }
 
 message AuctionMessage {
