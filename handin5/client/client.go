@@ -1,4 +1,4 @@
-package client
+package main
 
 import (
 	"bufio"
@@ -39,7 +39,6 @@ func main() {
 	if err != nil {
 		log.Printf("User failed to join the AuctionStream")
 	}
-	clientInstance.Clock.ReceiveEvent(response.Timestamp)
 
 	stream, err := client.AuctionStream(context.Background())
 	if err == nil {

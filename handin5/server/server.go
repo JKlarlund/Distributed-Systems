@@ -12,12 +12,16 @@ import (
 	"time"
 )
 
+type Bidder struct {
+	Stream pb.AuctionService_AuctionStreamServer
+}
+
 type Server struct {
 	pb.UnimplementedAuctionServiceServer
 	selfAddress          string
 	Clock                *Clock.LClock
 	ID                   int
-	bidders              map[int32](pb.AuctionService_AuctionStreamServer)
+	bidders              map[int32]*Bidder
 	currentHighestBid    int32
 	currentHighestBidder int32
 	auctionEnded         bool
@@ -46,7 +50,7 @@ func main() {
 	pb.RegisterAuctionServiceServer(server, &Server{
 		Clock:   Clock.InitializeLClock(0),
 		ID:      id,
-		bidders: make(map[int32]pb.AuctionService_AuctionStreamServer),
+		bidders: make(map[int32]*Bidder),
 	})
 	log.Printf("Server is listening on port: %d", *port)
 	if err := server.Serve(listener); err != nil {
@@ -64,7 +68,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	}
 	if s.bidders[msg.UserID] == nil {
 		log.Printf("User %d has joined the stream at lamport time: %d", msg.UserID, msg.Timestamp)
-		s.bidders[msg.UserID] = stream
+		s.bidders[msg.UserID] = &Bidder{Stream: stream}
 	}
 
 	for {
@@ -86,8 +90,8 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 		Message:   broadcastMessage,
 	}
 	log.Printf(broadcastMessage)
-	for _, stream := range s.bidders {
-		stream.Send(&bid)
+	for _, bidder := range s.bidders {
+		bidder.Stream.Send(&bid)
 	}
 }
 
@@ -118,6 +122,19 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 		HighestBidder: s.currentHighestBidder,
 		HighestBid:    s.currentHighestBid,
 		Timestamp:     s.Clock.SendEvent(),
+	}, nil
+}
+
+func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
+	s.Clock.ReceiveEvent(req.Timestamp)
+	newUserID := int32(len(s.bidders) + 1) // Generate a new user ID
+	s.bidders[newUserID] = &Bidder{}       // Add the new user to the bidders map
+
+	log.Printf("User %d has joined the auction at lamport time: %d", newUserID, s.Clock.Time)
+
+	return &pb.JoinResponse{
+		UserID:    newUserID,
+		Timestamp: s.Clock.SendEvent(),
 	}, nil
 }
 

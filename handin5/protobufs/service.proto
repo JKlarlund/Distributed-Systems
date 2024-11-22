@@ -34,7 +34,6 @@ message ResultResponse {
 }
 
 message JoinRequest {
-    int32 timestamp = 1;
 }
 
 message JoinResponse {
