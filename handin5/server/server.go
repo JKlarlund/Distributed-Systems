@@ -75,7 +75,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 		user = &Bidder{}
 		s.bidders[msg.UserID] = user
 	}
-
+	s.Clock.Step()
 	user.Stream = stream
 	log.Printf("User %d is now connected to the stream at lamport time: %d", msg.UserID, s.Clock.Time)
 
@@ -97,7 +97,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 }
 
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
-	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, bidRequest.Timestamp)
+	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, s.Clock.Time)
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
 		Timestamp: s.Clock.SendEvent(),
