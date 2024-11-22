@@ -91,7 +91,7 @@ func readInput(client pb.AuctionServiceClient) {
 			}
 			bidInt, err := strconv.Atoi(parts[1])
 			if err != nil {
-				log.Printf("\033[1;31mBid not sent since the input is not a valid integer\u001B[0m")
+				log.Printf("Bid not sent since the input is not a valid integer")
 				continue
 			}
 			bid := int32(bidInt)
