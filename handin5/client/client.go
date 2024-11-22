@@ -97,14 +97,23 @@ func readInput(client pb.AuctionServiceClient) {
 			bid := int32(bidInt)
 			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
-			if err != nil || !response.Success {
+			if err != nil {
 				log.Printf("Error sending bid: %v", err)
+				continue
 			}
 			clientInstance.Clock.ReceiveEvent(response.Timestamp)
+			if !response.Success {
+				log.Printf("Bid is too low!")
+				continue
+			}
+			log.Printf("Your bid of: %d was accepted! at lamport: %d", bidInt, clientInstance.Clock.Time)
 		case "result":
 			getResult(client)
+		case "help":
+			log.Printf("result - To get the highest bid")
+			log.Printf("bid <amount> - To bid on the auction")
 		default:
-			log.Printf("Unknow command: %v", command)
+			log.Printf("Unknow command: %v, use 'help' to get a list of the commands", command)
 		}
 	}
 }
