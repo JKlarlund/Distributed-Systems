@@ -119,6 +119,18 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 	}
 }
 
+func (s *Server) broadcastMessage(message pb.AuctionMessage) {
+	log.Printf("Broadcasting a message to all users")
+	for userID, bidder := range s.bidders {
+		if bidder != nil && bidder.Stream != nil {
+			err := bidder.Stream.Send(&message)
+			if err != nil {
+				log.Printf("Error sending bid to user %d: %v", userID, err)
+			}
+		}
+	}
+}
+
 func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
 
@@ -193,5 +205,13 @@ func (s *Server) startAuctionTimer(duration time.Duration) {
 	s.auctionIsActive = false
 	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
-	// TO-DO we need to broadcast to all users.
+	message := fmt.Sprintf("User: %d won the auction with bid: %d at lamport: %d", s.currentHighestBidder, s.currentHighestBid, s.Clock.Time)
+	s.broadcastMessage(pb.AuctionMessage{
+		Message:   message,
+		UserID:    s.currentHighestBidder,
+		Timestamp: s.Clock.SendEvent(),
+		Bid:       s.currentHighestBid,
+	})
+	s.currentHighestBid = 0
+	s.currentHighestBidder = 0
 }
