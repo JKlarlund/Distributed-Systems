@@ -139,7 +139,7 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
-	log.Printf("User: %d has left the auction at lamport time: %d", req.UserID, req.Timestamp)
+	log.Printf("User: %d has left the auction at lamport time: %d", req.UserID, s.Clock.Time)
 	return &pb.LeaveResponse{Timestamp: s.Clock.SendEvent()}, nil
 }
 

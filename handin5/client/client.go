@@ -38,20 +38,20 @@ func main() {
 	if err != nil {
 		log.Printf("User failed to join the AuctionStream")
 	}
+	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
+	clientInstance.Clock.ReceiveEvent(response.Timestamp)
 
 	stream, err := client.AuctionStream(context.Background())
 	if err == nil {
 		log.Printf("Connection was established as user: %d", response.UserID)
-
 	}
-	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
 
 	go listenToStream(stream)
 	go readInput(client)
 
 	<-sigs
 
-	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID})
+	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 	if err != nil {
 		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
 	}
