@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Bidder struct {
 
 type Server struct {
 	pb.UnimplementedAuctionServiceServer
+	auctionMutex         sync.Mutex
 	selfAddress          string
 	Clock                *Clock.LClock
 	ID                   int
@@ -48,9 +50,10 @@ func main() {
 	server := grpc.NewServer()
 
 	pb.RegisterAuctionServiceServer(server, &Server{
-		Clock:   Clock.InitializeLClock(0),
-		ID:      id,
-		bidders: make(map[int32]*Bidder),
+		Clock:           Clock.InitializeLClock(0),
+		ID:              id,
+		bidders:         make(map[int32]*Bidder),
+		auctionIsActive: false,
 	})
 	log.Printf("Server is listening on port: %d", *port)
 	if err := server.Serve(listener); err != nil {
@@ -118,7 +121,14 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 
 func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
-	if req.Amount > s.currentHighestBid {
+
+	if !s.auctionIsActive {
+		go s.startAuctionTimer(30 * time.Second)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	if req.Amount > s.currentHighestBid && s.auctionIsActive {
 		s.currentHighestBid = req.Amount
 		s.currentHighestBidder = req.BidderId
 		s.broadcastBid(req)
@@ -172,8 +182,20 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 }
 
 func (s *Server) startAuctionTimer(duration time.Duration) {
+	s.auctionMutex.Lock()
+	defer s.auctionMutex.Unlock()
+
+	if s.auctionIsActive {
+		log.Printf("Auction is already active")
+		return
+	}
+
 	s.auctionIsActive = true
-	//s.time.Sleep(duration)
+	s.Clock.Step()
+	log.Printf("The auction was started at lamport: %d", s.Clock.Time)
+	time.Sleep(duration)
 	s.auctionIsActive = false
+	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
+	// TO-DO we need to broadcast to all users.
 }
