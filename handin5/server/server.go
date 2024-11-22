@@ -125,6 +125,10 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 	}, nil
 }
 
+func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
+
+}
+
 func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
 	newUserID := int32(len(s.bidders) + 1) // Generate a new user ID
