@@ -15,15 +15,18 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type Client struct {
 	Clock *Clock.LClock
 	ID    int32
 	log   *log.Logger
+	timer time.Time
 }
 
 var clientInstance Client
+var client pb.AuctionServiceClient
 
 func main() {
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
@@ -39,7 +42,7 @@ func main() {
 	log.Printf("Trying to connect to the auction at lamport: %v", 0)
 	logs.WriteToLog(logFile, fmt.Sprintf("Trying to connect to the auction"), 0, -1)
 
-	client := pb.NewAuctionServiceClient(conn)
+	client = pb.NewAuctionServiceClient(conn)
 
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
@@ -181,5 +184,45 @@ func getResult(client pb.AuctionServiceClient) {
 		log.Printf("Highest bid was: %d by user: %d", response.HighestBid, response.HighestBidder)
 	} else {
 		log.Printf("Current highest bid is: %d by user: %d", response.HighestBid, response.HighestBidder)
+	}
+}
+
+func CheckLeaderAlive() bool {
+	for {
+		time.Sleep(1 * time.Second)
+
+		// Create a context with a 40-second timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+
+		// Perform the RPC call with the context
+		startTime := time.Now()
+		responseCh := make(chan bool) // Channel to signal if the call succeeds
+
+		go func() {
+			_, err := client.Heartbeat(ctx, &pb.HeartbeatMessage{
+				Timestamp: clientInstance.Clock.SendEvent(),
+			})
+			if err != nil {
+				fmt.Printf("Heartbeat failed: %v\n", err)
+				responseCh <- false
+				return
+			}
+			responseCh <- true
+		}()
+
+		select {
+		case success := <-responseCh:
+			if !success {
+				return false // If the RPC call failed
+			}
+			elapsed := time.Since(startTime)
+			fmt.Printf("Heartbeat succeeded, response time: %v\n", elapsed)
+			clientInstance.timer = time.Now() // Update the timer
+		case <-ctx.Done():
+			// Context timeout occurred (40 seconds exceeded)
+			fmt.Println("Heartbeat timed out: No response from the leader.")
+			return false
+		}
 	}
 }

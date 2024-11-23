@@ -252,3 +252,11 @@ func (s *Server) startAuctionTimer(duration time.Duration) {
 	s.currentHighestBid = 0
 	s.currentHighestBidder = 0
 }
+
+func (s *Server) Heartbeat(ctx context.Context, req *pb.HeartbeatMessage) (*pb.HeartbeatMessage, error) {
+	s.Clock.ReceiveEvent(req.Timestamp)
+	logs.WriteToLog(s.log, fmt.Sprintf("Heartbeat request received"), s.Clock.Time, int32(s.ID))
+	return &pb.HeartbeatMessage{
+		Timestamp: s.Clock.SendEvent(),
+	}, nil
+}

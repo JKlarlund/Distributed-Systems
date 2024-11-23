@@ -8,6 +8,11 @@ service auctionService {
     rpc AuctionStream(stream AuctionMessage) returns (stream AuctionMessage);
     rpc Join(JoinRequest) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
+    rpc Heartbeat(HeartbeatMessage) returns (HeartbeatMessage);
+}
+
+message HeartbeatMessage {
+    int32 timestamp = 1; // Lamport clock timestamp
 }
 
 message BidRequest {
