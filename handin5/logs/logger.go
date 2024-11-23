@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 func WriteToLog(logger *log.Logger, message string, timestamp int32, id int32) {
@@ -15,13 +16,14 @@ func WriteToLog(logger *log.Logger, message string, timestamp int32, id int32) {
 	}
 }
 
-func InitLogger(filename string) *log.Logger {
-	clientLog, err := os.OpenFile(filename+".log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+func InitLoggerWithUniqueID(filename string) *log.Logger {
+	filename = filename + strconv.Itoa(os.Getpid())
+	logFile, err := os.OpenFile(filename+".log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	return log.New(clientLog, "", log.Ldate|log.Ltime)
+	return log.New(logFile, "", log.Ldate|log.Ltime)
 }
 
 func ClearClientLogs() {

@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	Clock "github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
+	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5/logs"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
 	"io"
@@ -18,33 +20,40 @@ import (
 type Client struct {
 	Clock *Clock.LClock
 	ID    int32
+	log   *log.Logger
 }
 
 var clientInstance Client
 
 func main() {
 	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
+	logFile := logs.InitLoggerWithUniqueID("Client")
 	if err != nil {
 		log.Fatalf("User failed connecting to auction: %v", err)
+		logs.WriteToLog(logFile, fmt.Sprintf("User failed connecting to auction: %v", err), 0, -1) //No user ID yet.
 	}
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	log.Printf("Trying to connect to the auction at lamport: %v", 0)
+	logs.WriteToLog(logFile, fmt.Sprintf("Trying to connect to the auction"), 0, -1)
 
 	client := pb.NewAuctionServiceClient(conn)
 
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
 		log.Printf("User failed to join the AuctionStream")
+		logs.WriteToLog(logFile, fmt.Sprintf("Trying to connect to the auction"), response.Timestamp, response.UserID)
 	}
-	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
+	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2), log: logFile}
 	clientInstance.Clock.ReceiveEvent(response.Timestamp)
 
 	stream, err := client.AuctionStream(context.Background())
 	if err == nil {
 		log.Printf("Connection was established as user: %d at lamport: %d", clientInstance.ID, clientInstance.Clock.Time)
+		logs.WriteToLog(clientInstance.log, fmt.Sprintf("Connection was established as user: %d", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 	}
 	err = stream.Send(&pb.AuctionMessage{
 		UserID:    clientInstance.ID,
@@ -53,6 +62,8 @@ func main() {
 	})
 	if err != nil {
 		log.Printf("Error sending initial message: %v", err)
+		logs.WriteToLog(clientInstance.log, fmt.Sprintf("Error sending initial message: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 	}
 
 	go listenToStream(stream)
@@ -63,10 +74,14 @@ func main() {
 	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 	if err != nil {
 		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
+		logs.WriteToLog(clientInstance.log, fmt.Sprintf("User: %d failed to leave the AuctionStream", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 	}
 	clientInstance.Clock.ReceiveEvent(LeaveResponse.Timestamp)
 	stream.CloseSend()
 	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
+	logs.WriteToLog(clientInstance.log, fmt.Sprintf("User: %d successfully left the auction!", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 }
 
 func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
@@ -75,9 +90,13 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
 		if err != nil {
 			if err == io.EOF {
 				log.Printf("Server closed the stream.")
+				logs.WriteToLog(clientInstance.log, fmt.Sprintf("User: %d successfully left the auction!", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 				return
 			}
 			log.Printf("Error while receiving message: %v", err)
+			logs.WriteToLog(clientInstance.log, fmt.Sprintf("Error while receiving message: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 			return
 		}
 
@@ -85,6 +104,8 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
 		if in != nil {
 			clientInstance.Clock.ReceiveEvent(in.Timestamp)
 			log.Printf("%v", in.Message)
+			logs.WriteToLog(clientInstance.log, "Message received from stream", clientInstance.Clock.Time, clientInstance.ID)
+
 		}
 	}
 }
@@ -115,6 +136,8 @@ func readInput(client pb.AuctionServiceClient) {
 			bid := int32(bidInt)
 			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
+			logs.WriteToLog(clientInstance.log, "Sending a bid to server", clientInstance.Clock.Time, clientInstance.ID)
+
 			if err != nil {
 				log.Printf("Error sending bid: %v", err)
 				continue
@@ -125,6 +148,8 @@ func readInput(client pb.AuctionServiceClient) {
 				continue
 			}
 			log.Printf("Your bid of: %d was accepted! at lamport: %d", bidInt, clientInstance.Clock.Time)
+			logs.WriteToLog(clientInstance.log, fmt.Sprintf("Your bid of: %d was accepted!", bidInt), clientInstance.Clock.Time, clientInstance.ID)
+
 		case "result":
 			getResult(client)
 		case "help":
@@ -141,11 +166,17 @@ func getResult(client pb.AuctionServiceClient) {
 		UserID:    clientInstance.ID,
 		Timestamp: clientInstance.Clock.SendEvent(),
 	})
+	logs.WriteToLog(clientInstance.log, fmt.Sprintf("Requesting current result from server"), clientInstance.Clock.Time, clientInstance.ID)
+
 	if err != nil {
 		log.Printf("Getting the result caused an error: %v", err)
+		logs.WriteToLog(clientInstance.log, fmt.Sprintf("Getting the result caused an error: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 		return
 	}
 	clientInstance.Clock.ReceiveEvent(response.Timestamp)
+	logs.WriteToLog(clientInstance.log, fmt.Sprintf("Received current result from server"), clientInstance.Clock.Time, clientInstance.ID)
+
 	if response.AuctionEnded {
 		log.Printf("Highest bid was: %d by user: %d", response.HighestBid, response.HighestBidder)
 	} else {
