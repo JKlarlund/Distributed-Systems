@@ -173,7 +173,7 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 	s.Clock.ReceiveEvent(req.Timestamp)
 
 	if !s.auctionIsActive {
-		go s.startAuctionTimer(30)
+		go s.setUpAuction()
 	}
 
 	time.Sleep(1 * time.Second)
@@ -238,29 +238,28 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 }
 
 func (s *Server) setUpAuction() {
-	if s.auctionIsActive {
-
-	}
-}
-
-func (s *Server) startAuctionTimer(duration int) {
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
 
 	if s.auctionIsActive {
-		log.Printf("Auction is already active")
+		log.Printf("Auction is already active!")
+		s.startAuctionTimer()
 		return
 	}
 
 	s.auctionIsActive = true
 	s.Clock.Step()
+	var timer int32 = 30
+	s.remainingTime = timer
 	log.Printf("The auction was started at lamport: %d", s.Clock.Time)
-	s.remainingTime = int32(duration)
-	for i := 0; i < duration; i++ {
+	s.startAuctionTimer()
+}
+
+func (s *Server) startAuctionTimer() {
+	for s.remainingTime != 0 {
 		time.Sleep(time.Second)
 		s.remainingTime--
 	}
-	s.auctionIsActive = false
 	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
 	message := fmt.Sprintf("User: %d won the auction with bid: %d at lamport: %d", s.currentHighestBidder, s.currentHighestBid, s.Clock.Time)
@@ -272,6 +271,7 @@ func (s *Server) startAuctionTimer(duration int) {
 	})
 	s.currentHighestBid = 0
 	s.currentHighestBidder = 0
+	s.auctionIsActive = false
 }
 
 func (s *Server) GetPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResponse, error) {
@@ -319,6 +319,14 @@ func (s *Server) monitorPrimary() {
 			log.Println("Primary server is unresponsive. Promoting self to primary.")
 			s.isPrimary = true
 			s.primaryAddress = s.selfAddress
+
+			// Initialize auction if it's active on the failed primary
+			if s.remainingTime > 0 {
+				log.Println("Continuing auction from backup server.")
+				go s.setUpAuction() // Resume auction with remaining time
+			} else {
+				log.Println("No active auction to continue.")
+			}
 			return
 		}
 
