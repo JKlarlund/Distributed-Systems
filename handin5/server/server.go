@@ -7,6 +7,7 @@ import (
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -92,6 +93,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	s.Clock.ReceiveEvent(msg.Timestamp)
 	log.Printf("First messages was received from the stream to establish a connection at lamport: %d", s.Clock.Time)
 
+	s.auctionMutex.Lock()
 	user, exists := s.bidders[msg.UserID]
 	if !exists || user == nil {
 		log.Printf("Registering new user %d for the stream at lamport time: %d", msg.UserID, s.Clock.Time)
@@ -100,13 +102,19 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	}
 	s.Clock.Step()
 	user.Stream = stream
+	s.auctionMutex.Unlock()
+
 	log.Printf("User %d is now connected to the stream at lamport time: %d", msg.UserID, s.Clock.Time)
 
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
-			log.Printf("Error receiving message from user %d: %v", msg.UserID, err)
-			return err
+			if err == io.EOF {
+				log.Printf("Stream closed for user with error: %v", err)
+				break
+			}
+			log.Printf("Error receiving message from user %v", err)
+			break
 		}
 		s.Clock.ReceiveEvent(msg.Timestamp)
 		log.Printf("Received bid from user %d: %d at lamport time: %d", msg.UserID, msg.Bid, s.Clock.Time)
@@ -116,7 +124,16 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 			Amount:   msg.Bid,
 			BidderId: msg.UserID,
 		})
+
+		// Cleaning up when the user leaves the stream
+		s.auctionMutex.Lock()
+		if _, exists := s.bidders[msg.UserID]; exists {
+			delete(s.bidders, msg.UserID)
+			log.Printf("User %d has been removed from the auction at lamport time: %d", msg.UserID, s.Clock.Time)
+		}
+		s.auctionMutex.Unlock()
 	}
+	return nil
 }
 
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
@@ -186,7 +203,17 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
-	log.Printf("User: %d has left the auction at lamport time: %d", req.UserID, s.Clock.Time)
+
+	s.auctionMutex.Lock()
+	defer s.auctionMutex.Unlock()
+
+	if _, exists := s.bidders[req.UserID]; exists {
+		delete(s.bidders, req.UserID) // Remove the user from the map
+		log.Printf("User: %d has left from the auction at lamport time: %d", req.UserID, s.Clock.Time)
+	} else {
+		log.Printf("Leave called for non-existent user: %d", req.UserID)
+	}
+
 	return &pb.LeaveResponse{Timestamp: s.Clock.SendEvent()}, nil
 }
 
