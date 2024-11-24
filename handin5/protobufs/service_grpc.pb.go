@@ -25,7 +25,7 @@ const (
 	AuctionService_Join_FullMethodName          = "/auctionService/Join"
 	AuctionService_Leave_FullMethodName         = "/auctionService/Leave"
 	AuctionService_SendHeartbeat_FullMethodName = "/auctionService/SendHeartbeat"
-	AuctionService_GetPrimary_FullMethodName    = "/auctionService/getPrimary"
+	AuctionService_GetPrimary_FullMethodName    = "/auctionService/GetPrimary"
 )
 
 // AuctionServiceClient is the client API for AuctionService service.
@@ -328,7 +328,7 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AuctionService_SendHeartbeat_Handler,
 		},
 		{
-			MethodName: "getPrimary",
+			MethodName: "GetPrimary",
 			Handler:    _AuctionService_GetPrimary_Handler,
 		},
 	},

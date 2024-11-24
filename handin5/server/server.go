@@ -236,7 +236,7 @@ func (s *Server) startAuctionTimer(duration time.Duration) {
 	s.currentHighestBidder = 0
 }
 
-func (s *Server) getPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResponse, error) {
+func (s *Server) GetPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResponse, error) {
 	if s.isPrimary {
 		log.Println("getPrimary called: This server is the primary.")
 		return &pb.PrimaryResponse{

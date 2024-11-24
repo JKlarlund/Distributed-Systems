@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type Client struct {
@@ -23,10 +24,14 @@ type Client struct {
 var clientInstance Client
 
 func main() {
-	conn, err := grpc.DialContext(context.Background(), "localhost:1337", grpc.WithInsecure(), grpc.WithBlock())
+	knownAddresses := []string{"localhost:1337", "localhost:1338"} // List of known servers
+	primaryAddress := findPrimary(knownAddresses)                  // Find the current primary server
+
+	conn, err := grpc.DialContext(context.Background(), primaryAddress, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("User failed connecting to auction: %v", err)
 	}
+	defer conn.Close()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -37,15 +42,16 @@ func main() {
 
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
-		log.Printf("User failed to join the AuctionStream")
+		log.Fatalf("User failed to join the AuctionStream: %v", err)
 	}
 	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
 	clientInstance.Clock.ReceiveEvent(response.Timestamp)
 
 	stream, err := client.AuctionStream(context.Background())
-	if err == nil {
-		log.Printf("Connection was established as user: %d at lamport: %d", clientInstance.ID, clientInstance.Clock.Time)
+	if err != nil {
+		log.Fatalf("Failed to open AuctionStream: %v", err)
 	}
+
 	err = stream.Send(&pb.AuctionMessage{
 		UserID:    clientInstance.ID,
 		Timestamp: clientInstance.Clock.SendEvent(),
@@ -55,7 +61,7 @@ func main() {
 		log.Printf("Error sending initial message: %v", err)
 	}
 
-	go listenToStream(stream)
+	go listenToStream(stream, client, knownAddresses)
 	go readInput(client)
 
 	<-sigs
@@ -69,7 +75,7 @@ func main() {
 	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
 }
 
-func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
+func listenToStream(stream pb.AuctionService_AuctionStreamClient, client pb.AuctionServiceClient, knownAddresses []string) {
 	for {
 		in, err := stream.Recv()
 		if err != nil {
@@ -78,7 +84,33 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient) {
 				return
 			}
 			log.Printf("Error while receiving message: %v", err)
-			return
+
+			// Handle reconnection logic
+			log.Printf("Attempting to reconnect to the auction...")
+			time.Sleep(6 * time.Second) // Temp solution, as the backup server needs to assign itself as primary before we can make the call
+			newPrimary := findPrimary(knownAddresses)
+			conn, err := grpc.DialContext(context.Background(), newPrimary, grpc.WithInsecure(), grpc.WithBlock())
+			if err != nil {
+				log.Fatalf("Failed to reconnect to new primary: %v", err)
+			}
+			defer conn.Close()
+
+			client = pb.NewAuctionServiceClient(conn)
+			stream, err = client.AuctionStream(context.Background())
+			if err != nil {
+				log.Fatalf("Failed to reconnect AuctionStream: %v", err)
+			}
+			log.Printf("Reconnected to new primary at: %s", newPrimary)
+
+			// Resend initial message after reconnecting
+			err = stream.Send(&pb.AuctionMessage{
+				UserID:    clientInstance.ID,
+				Timestamp: clientInstance.Clock.SendEvent(),
+				Message:   "Reconnection message",
+			})
+			if err != nil {
+				log.Printf("Error sending reconnection message: %v", err)
+			}
 		}
 
 		// Process the incoming message
@@ -151,4 +183,28 @@ func getResult(client pb.AuctionServiceClient) {
 	} else {
 		log.Printf("Current highest bid is: %d by user: %d", response.HighestBid, response.HighestBidder)
 	}
+}
+
+func findPrimary(knownAddresses []string) string {
+	for _, address := range knownAddresses {
+		conn, err := grpc.Dial(address, grpc.WithInsecure())
+		if err != nil {
+			log.Printf("Failed to connect to server at %s: %v", address, err)
+			continue
+		}
+
+		client := pb.NewAuctionServiceClient(conn)
+		resp, err := client.GetPrimary(context.Background(), &pb.Empty{})
+		conn.Close()
+
+		if err == nil && resp != nil {
+			log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
+			return resp.Address
+		}
+
+		log.Printf("Error calling GetPrimary on %s: %v", address, err)
+	}
+
+	log.Fatalf("Failed to discover primary server.")
+	return ""
 }

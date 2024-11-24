@@ -9,7 +9,7 @@ service auctionService {
     rpc Join(JoinRequest) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
     rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-    rpc getPrimary(Empty) returns (PrimaryResponse);
+    rpc GetPrimary(Empty) returns (PrimaryResponse);
 }
 
 message BidRequest {
