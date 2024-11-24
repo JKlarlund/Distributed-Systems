@@ -285,7 +285,6 @@ func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 		return &pb.HeartbeatResponse{IsAlive: false}, nil
 	}
 
-	log.Printf("Heartbeat received at timestamp: %d", req.Timestamp)
 	return &pb.HeartbeatResponse{IsAlive: true}, nil
 }
 
@@ -321,7 +320,6 @@ func (s *Server) monitorPrimary() {
 		if err != nil || !resp.IsAlive {
 			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
 		} else {
-			log.Println("Primary is alive")
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
 		}
 	}
