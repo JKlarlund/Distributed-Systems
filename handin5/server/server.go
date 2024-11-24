@@ -350,6 +350,7 @@ func (s *Server) monitorPrimary() {
 				s.currentHighestBidder = resp.CurrentHighestBidder
 				s.currentHighestBid = resp.CurrentHighestBid
 				s.remainingTime = resp.RemainingTime
+				s.auctionIsActive = resp.AuctionIsActive
 			}
 		}
 	}
