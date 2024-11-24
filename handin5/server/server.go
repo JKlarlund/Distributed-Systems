@@ -29,6 +29,7 @@ type Server struct {
 	bidders              map[int32]*Bidder
 	currentHighestBid    int32
 	currentHighestBidder int32
+	remainingTime        int32
 	auctionIsActive      bool
 }
 
@@ -172,7 +173,7 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 	s.Clock.ReceiveEvent(req.Timestamp)
 
 	if !s.auctionIsActive {
-		go s.startAuctionTimer(30 * time.Second)
+		go s.startAuctionTimer(30)
 	}
 
 	time.Sleep(1 * time.Second)
@@ -236,7 +237,7 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	}, nil
 }
 
-func (s *Server) startAuctionTimer(duration time.Duration) {
+func (s *Server) startAuctionTimer(duration int) {
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
 
@@ -248,7 +249,11 @@ func (s *Server) startAuctionTimer(duration time.Duration) {
 	s.auctionIsActive = true
 	s.Clock.Step()
 	log.Printf("The auction was started at lamport: %d", s.Clock.Time)
-	time.Sleep(duration)
+	s.remainingTime = int32(duration)
+	for i := 0; i < duration; i++ {
+		time.Sleep(time.Second)
+		s.remainingTime--
+	}
 	s.auctionIsActive = false
 	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
@@ -285,7 +290,12 @@ func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 		return &pb.HeartbeatResponse{IsAlive: false}, nil
 	}
 
-	return &pb.HeartbeatResponse{IsAlive: true}, nil
+	return &pb.HeartbeatResponse{
+		IsAlive:              true,
+		CurrentHighestBid:    s.currentHighestBid,
+		CurrentHighestBidder: s.currentHighestBidder,
+		RemainingTime:        s.remainingTime,
+	}, nil
 }
 
 func (s *Server) monitorPrimary() {
@@ -321,6 +331,9 @@ func (s *Server) monitorPrimary() {
 			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
 		} else {
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
+			s.currentHighestBidder = resp.CurrentHighestBidder
+			s.currentHighestBid = resp.CurrentHighestBid
+			s.remainingTime = resp.RemainingTime
 		}
 	}
 }
