@@ -71,6 +71,7 @@ message HeartbeatResponse {
     int32 currentHighestBid = 3;
     int32 currentHighestBidder = 4;
     int32 remainingTime = 5;
+    int32 lamportClock = 6;
 }
 
 message Empty {}

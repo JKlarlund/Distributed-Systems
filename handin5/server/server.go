@@ -302,6 +302,7 @@ func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 		CurrentHighestBidder: s.currentHighestBidder,
 		RemainingTime:        s.remainingTime,
 		AuctionIsActive:      s.auctionIsActive,
+		LamportClock:         s.Clock.Time,
 	}, nil
 }
 
@@ -351,6 +352,7 @@ func (s *Server) monitorPrimary() {
 				s.currentHighestBid = resp.CurrentHighestBid
 				s.remainingTime = resp.RemainingTime
 				s.auctionIsActive = resp.AuctionIsActive
+				s.Clock.Time = resp.LamportClock
 			}
 		}
 	}
