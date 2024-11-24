@@ -21,6 +21,8 @@ type Server struct {
 	pb.UnimplementedAuctionServiceServer
 	auctionMutex         sync.Mutex
 	selfAddress          string
+	primaryAddress       string
+	isPrimary            bool
 	Clock                *Clock.LClock
 	ID                   int
 	bidders              map[int32]*Bidder
@@ -29,26 +31,33 @@ type Server struct {
 	auctionIsActive      bool
 }
 
-var port *int = flag.Int("Port", 1337, "Server Port")
-
 /*
 Sets up a server node. You must specify via flag whether it's the primary or not, by calling it with flag -isPrimary true/false
 */
 func main() {
-	isPrimary := *flag.Bool("isPrimary", false, "Is the node the primary server?")
+	isPrimary := flag.Bool("isPrimary", false, "Is the node the primary server?")
+	port := flag.Int("Port", 1337, "Server Port")
 	flag.Parse()
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("Failed to listen on port %d: %v", *port, err)
+
+	selfAddress := fmt.Sprintf("localhost:%d", *port)
+	primaryAddress := "localhost:1337" // Primary always starts at this address
+
+	if *isPrimary {
+		log.Printf("Starting primary server at %s", selfAddress)
+	} else {
+		log.Printf("Starting backup server at %s (Primary is %s)", selfAddress, primaryAddress)
 	}
 
 	id := 0
-	if !isPrimary {
+	if !*isPrimary {
 		id = 1
 	}
 
 	server := grpc.NewServer()
-
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		log.Fatalf("Failed to listen on port %d: %v", *port, err)
+	}
 	pb.RegisterAuctionServiceServer(server, &Server{
 		Clock:           Clock.InitializeLClock(0),
 		ID:              id,
@@ -214,4 +223,20 @@ func (s *Server) startAuctionTimer(duration time.Duration) {
 	})
 	s.currentHighestBid = 0
 	s.currentHighestBidder = 0
+}
+
+func (s *Server) getPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResponse, error) {
+	if s.isPrimary {
+		log.Println("getPrimary called: This server is the primary.")
+		return &pb.PrimaryResponse{
+			Address:       s.selfAddress,
+			StatusMessage: "This is the primary",
+		}, nil
+	}
+
+	log.Printf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress)
+	return &pb.PrimaryResponse{
+		Address:       s.primaryAddress,
+		StatusMessage: "Redirect to primary",
+	}, nil
 }

@@ -24,6 +24,8 @@ const (
 	AuctionService_AuctionStream_FullMethodName = "/auctionService/AuctionStream"
 	AuctionService_Join_FullMethodName          = "/auctionService/Join"
 	AuctionService_Leave_FullMethodName         = "/auctionService/Leave"
+	AuctionService_SendHeartbeat_FullMethodName = "/auctionService/SendHeartbeat"
+	AuctionService_GetPrimary_FullMethodName    = "/auctionService/getPrimary"
 )
 
 // AuctionServiceClient is the client API for AuctionService service.
@@ -35,6 +37,8 @@ type AuctionServiceClient interface {
 	AuctionStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AuctionMessage, AuctionMessage], error)
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
+	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	GetPrimary(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PrimaryResponse, error)
 }
 
 type auctionServiceClient struct {
@@ -98,6 +102,26 @@ func (c *auctionServiceClient) Leave(ctx context.Context, in *LeaveRequest, opts
 	return out, nil
 }
 
+func (c *auctionServiceClient) SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HeartbeatResponse)
+	err := c.cc.Invoke(ctx, AuctionService_SendHeartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *auctionServiceClient) GetPrimary(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PrimaryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PrimaryResponse)
+	err := c.cc.Invoke(ctx, AuctionService_GetPrimary_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuctionServiceServer is the server API for AuctionService service.
 // All implementations must embed UnimplementedAuctionServiceServer
 // for forward compatibility.
@@ -107,6 +131,8 @@ type AuctionServiceServer interface {
 	AuctionStream(grpc.BidiStreamingServer[AuctionMessage, AuctionMessage]) error
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
+	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	GetPrimary(context.Context, *Empty) (*PrimaryResponse, error)
 	mustEmbedUnimplementedAuctionServiceServer()
 }
 
@@ -131,6 +157,12 @@ func (UnimplementedAuctionServiceServer) Join(context.Context, *JoinRequest) (*J
 }
 func (UnimplementedAuctionServiceServer) Leave(context.Context, *LeaveRequest) (*LeaveResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Leave not implemented")
+}
+func (UnimplementedAuctionServiceServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendHeartbeat not implemented")
+}
+func (UnimplementedAuctionServiceServer) GetPrimary(context.Context, *Empty) (*PrimaryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPrimary not implemented")
 }
 func (UnimplementedAuctionServiceServer) mustEmbedUnimplementedAuctionServiceServer() {}
 func (UnimplementedAuctionServiceServer) testEmbeddedByValue()                        {}
@@ -232,6 +264,42 @@ func _AuctionService_Leave_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuctionService_SendHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuctionServiceServer).SendHeartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuctionService_SendHeartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuctionServiceServer).SendHeartbeat(ctx, req.(*HeartbeatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuctionService_GetPrimary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuctionServiceServer).GetPrimary(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuctionService_GetPrimary_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuctionServiceServer).GetPrimary(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuctionService_ServiceDesc is the grpc.ServiceDesc for AuctionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -254,6 +322,14 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Leave",
 			Handler:    _AuctionService_Leave_Handler,
+		},
+		{
+			MethodName: "SendHeartbeat",
+			Handler:    _AuctionService_SendHeartbeat_Handler,
+		},
+		{
+			MethodName: "getPrimary",
+			Handler:    _AuctionService_GetPrimary_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
