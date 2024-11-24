@@ -237,6 +237,12 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	}, nil
 }
 
+func (s *Server) setUpAuction() {
+	if s.auctionIsActive {
+
+	}
+}
+
 func (s *Server) startAuctionTimer(duration int) {
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
@@ -295,6 +301,7 @@ func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*
 		CurrentHighestBid:    s.currentHighestBid,
 		CurrentHighestBidder: s.currentHighestBidder,
 		RemainingTime:        s.remainingTime,
+		AuctionIsActive:      s.auctionIsActive,
 	}, nil
 }
 
@@ -331,9 +338,11 @@ func (s *Server) monitorPrimary() {
 			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
 		} else {
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
-			s.currentHighestBidder = resp.CurrentHighestBidder
-			s.currentHighestBid = resp.CurrentHighestBid
-			s.remainingTime = resp.RemainingTime
+			if resp.AuctionIsActive {
+				s.currentHighestBidder = resp.CurrentHighestBidder
+				s.currentHighestBid = resp.CurrentHighestBid
+				s.remainingTime = resp.RemainingTime
+			}
 		}
 	}
 }

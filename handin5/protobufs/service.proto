@@ -67,9 +67,10 @@ message HeartbeatRequest {
 
 message HeartbeatResponse {
     bool isAlive = 1;
-    int32 currentHighestBid = 2;
-    int32 currentHighestBidder = 3;
-    int32 remainingTime = 4;
+    bool auctionIsActive = 2;
+    int32 currentHighestBid = 3;
+    int32 currentHighestBidder = 4;
+    int32 remainingTime = 5;
 }
 
 message Empty {}
