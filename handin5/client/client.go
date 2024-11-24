@@ -22,6 +22,7 @@ type Client struct {
 }
 
 var clientInstance Client
+var client pb.AuctionServiceClient
 
 func main() {
 	knownAddresses := []string{"localhost:1337", "localhost:1338"} // List of known servers
@@ -38,7 +39,7 @@ func main() {
 
 	log.Printf("Trying to connect to the auction at lamport: %v", 0)
 
-	client := pb.NewAuctionServiceClient(conn)
+	client = pb.NewAuctionServiceClient(conn)
 
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
@@ -61,8 +62,8 @@ func main() {
 		log.Printf("Error sending initial message: %v", err)
 	}
 
-	go listenToStream(stream, client, knownAddresses)
-	go readInput(client)
+	go listenToStream(stream, knownAddresses)
+	go readInput()
 
 	<-sigs
 
@@ -75,7 +76,7 @@ func main() {
 	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
 }
 
-func listenToStream(stream pb.AuctionService_AuctionStreamClient, client pb.AuctionServiceClient, knownAddresses []string) {
+func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses []string) {
 	for {
 		in, err := stream.Recv()
 		if err != nil {
@@ -121,7 +122,7 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, client pb.Auct
 	}
 }
 
-func readInput(client pb.AuctionServiceClient) {
+func readInput() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		message, err := reader.ReadString('\n')
@@ -158,7 +159,7 @@ func readInput(client pb.AuctionServiceClient) {
 			}
 			log.Printf("Your bid of: %d was accepted! at lamport: %d", bidInt, clientInstance.Clock.Time)
 		case "result":
-			getResult(client)
+			getResult()
 		case "help":
 			log.Printf("result - To get the highest bid")
 			log.Printf("bid <amount> - To bid on the auction")
@@ -168,7 +169,7 @@ func readInput(client pb.AuctionServiceClient) {
 	}
 }
 
-func getResult(client pb.AuctionServiceClient) {
+func getResult() {
 	response, err := client.Result(context.Background(), &pb.ResultRequest{
 		UserID:    clientInstance.ID,
 		Timestamp: clientInstance.Clock.SendEvent(),
