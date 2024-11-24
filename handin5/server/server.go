@@ -40,7 +40,7 @@ func main() {
 	flag.Parse()
 
 	selfAddress := fmt.Sprintf("localhost:%d", *port)
-	primaryAddress := "localhost:1337" // Primary always starts at this address
+	primaryAddress := "localhost:1337"
 
 	if *isPrimary {
 		log.Printf("Starting primary server at %s", selfAddress)
@@ -53,22 +53,33 @@ func main() {
 		id = 1
 	}
 
-	server := grpc.NewServer()
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
-	if err != nil {
-		log.Fatalf("Failed to listen on port %d: %v", *port, err)
-	}
-	pb.RegisterAuctionServiceServer(server, &Server{
+	s := &Server{
 		Clock:           Clock.InitializeLClock(0),
 		ID:              id,
 		bidders:         make(map[int32]*Bidder),
 		auctionIsActive: false,
-	})
-	log.Printf("Server is listening on port: %d", *port)
-	if err := server.Serve(listener); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
+		selfAddress:     selfAddress,
+		primaryAddress:  primaryAddress,
+		isPrimary:       *isPrimary,
 	}
+	server := grpc.NewServer()
+	pb.RegisterAuctionServiceServer(server, s)
 
+	// Start gRPC server
+	go func() {
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+		if err != nil {
+			log.Fatalf("Failed to listen on port %d: %v", *port, err)
+		}
+		log.Printf("Server is listening on port: %d", *port)
+		if err := server.Serve(listener); err != nil {
+			log.Fatalf("Failed to serve: %v", err)
+		}
+	}()
+
+	go s.monitorPrimary()
+
+	select {}
 }
 
 func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) error {
@@ -239,4 +250,52 @@ func (s *Server) getPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResp
 		Address:       s.primaryAddress,
 		StatusMessage: "Redirect to primary",
 	}, nil
+}
+
+func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
+	if !s.isPrimary {
+		log.Println("Received heartbeat request, but this server is not the primary.")
+		return &pb.HeartbeatResponse{IsAlive: false}, nil
+	}
+
+	log.Printf("Heartbeat received at timestamp: %d", req.Timestamp)
+	return &pb.HeartbeatResponse{IsAlive: true}, nil
+}
+
+func (s *Server) monitorPrimary() {
+	lastHeartbeat := time.Now()
+
+	for {
+		if s.isPrimary {
+			return // Stop monitoring if this server becomes the primary
+		}
+
+		time.Sleep(1 * time.Second) // Check for heartbeats every second
+
+		if time.Since(lastHeartbeat) > 5*time.Second { // Timeout of 5 seconds
+			log.Println("Primary server is unresponsive. Promoting self to primary.")
+			s.isPrimary = true
+			s.primaryAddress = s.selfAddress
+			return
+		}
+
+		conn, err := grpc.Dial(s.primaryAddress, grpc.WithInsecure())
+		if err != nil {
+			log.Printf("Failed to connect to primary for heartbeat check: %v", err)
+			continue
+		}
+
+		client := pb.NewAuctionServiceClient(conn)
+		resp, err := client.SendHeartbeat(context.Background(), &pb.HeartbeatRequest{
+			Timestamp: int32(time.Now().Unix()),
+		})
+		conn.Close()
+
+		if err != nil || !resp.IsAlive {
+			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
+		} else {
+			log.Println("Primary is alive")
+			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
+		}
+	}
 }
