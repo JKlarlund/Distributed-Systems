@@ -8,11 +8,8 @@ service auctionService {
     rpc AuctionStream(stream AuctionMessage) returns (stream AuctionMessage);
     rpc Join(JoinRequest) returns (JoinResponse);
     rpc Leave(LeaveRequest) returns (LeaveResponse);
-    rpc Heartbeat(HeartbeatMessage) returns (HeartbeatMessage);
-}
-
-message HeartbeatMessage {
-    int32 timestamp = 1; // Lamport clock timestamp
+    rpc SendHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+    rpc GetPrimary(PrimaryRequest) returns (PrimaryResponse);
 }
 
 message BidRequest {
@@ -62,4 +59,27 @@ message AuctionMessage {
     string message = 2; // Message (e.g., "New highest bid: $100")
     int32 timestamp = 3; // Logical or real-time timestamp of the message
     int32 bid = 4;
+}
+
+message HeartbeatRequest {
+    int32 timestamp = 1;
+}
+
+message HeartbeatResponse {
+    bool isAlive = 1;
+    bool auctionIsActive = 2;
+    int32 currentHighestBid = 3;
+    int32 currentHighestBidder = 4;
+    int32 remainingTime = 5;
+    int32 lamportClock = 6;
+}
+
+message PrimaryRequest {
+    int32 timestamp = 1;
+}
+
+message PrimaryResponse {
+    string address = 1;
+    string statusMessage = 2; // Status message (e.g. Redirect to primary)
+    int32 timestamp = 3;
 }
