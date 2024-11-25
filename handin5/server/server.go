@@ -169,7 +169,7 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
-		Timestamp: s.Clock.SendEvent(),
+		Timestamp: s.Clock.Time,
 		UserID:    bidRequest.BidderId,
 		Message:   broadcastMessage,
 	}
@@ -219,13 +219,17 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 	if req.Amount > s.currentHighestBid && s.auctionIsActive {
 		s.currentHighestBid = req.Amount
 		s.currentHighestBidder = req.BidderId
+		s.Clock.Step()
+		logs.WriteToServerLog(s.logFile, "Broadcasting bid", s.Clock.Time)
 		s.broadcastBid(req)
+		logs.WriteToServerLog(s.logFile, "Returning response to bidder", s.Clock.Time)
+
 		return &pb.BidResponse{
 			Success:   true,
-			Timestamp: s.Clock.SendEvent(),
+			Timestamp: s.Clock.Time,
 		}, nil
 	}
-	return &pb.BidResponse{Success: false, Timestamp: s.Clock.SendEvent()}, nil
+	return &pb.BidResponse{Success: false, Timestamp: s.Clock.Time}, nil
 }
 
 func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultResponse, error) {
@@ -271,10 +275,12 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 
 	log.Printf("User %d has joined the auction at lamport time: %d", newUserID, s.Clock.Time)
 	logs.WriteToServerLog(s.logFile, fmt.Sprintf("User %d has joined the auction", newUserID), s.Clock.Time)
+	s.Clock.Step()
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("Sending unique ID to user", newUserID), s.Clock.Time)
 
 	return &pb.JoinResponse{
 		UserID:    newUserID,
-		Timestamp: s.Clock.SendEvent(),
+		Timestamp: s.Clock.Time,
 	}, nil
 }
 
@@ -291,7 +297,6 @@ func (s *Server) setUpAuction() {
 	}
 
 	s.auctionIsActive = true
-	s.Clock.Step()
 	var timer int32 = 30
 	s.remainingTime = timer
 	log.Printf("The auction was started at lamport: %d", s.Clock.Time)

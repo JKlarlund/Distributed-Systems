@@ -30,14 +30,14 @@ var client pb.AuctionServiceClient
 func main() {
 	logFile := logs.InitLogger("Client" + strconv.Itoa(os.Getpid()))
 	knownAddresses := []string{"localhost:1337", "localhost:1338"} // List of known servers
-	primaryAddress := findPrimary(knownAddresses, logFile)         // Find the current primary server
+	primaryAddress, time := findPrimary(knownAddresses, logFile)   // Find the current primary server
 
 	conn, err := grpc.DialContext(context.Background(), primaryAddress, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("User failed connecting to auction: %v", err)
 	}
 	defer conn.Close()
-	clientClock := Clock.InitializeLClock(0)
+	clientClock := Clock.InitializeLClock(time)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -45,14 +45,13 @@ func main() {
 	log.Printf("Trying to connect to the auction at lamport: %v", clientClock.Time)
 	logs.WriteToLog(logFile, "Trying to connect to the auction", clientClock.Time, -1) //No user ID yet.
 	client = pb.NewAuctionServiceClient(conn)
-	clientClock.Step()
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: clientClock.Time})
 	if err != nil {
 		log.Fatalf("User failed to join the AuctionStream: %v", err)
 	}
 	clientClock.ReceiveEvent(response.Timestamp)
 	clientInstance = Client{ID: response.UserID, Clock: clientClock, logFile: logFile}
-	//logs.RenameLogger("Client"+strconv.Itoa(os.Getpid()), "Client - "+strconv.Itoa(int(response.UserID)))
+
 	logs.WriteToLog(clientInstance.logFile, "Received join confirmation from server", clientInstance.Clock.Time, clientInstance.ID)
 
 	clientInstance.Clock.Step()
@@ -115,8 +114,8 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			logs.WriteToLog(clientInstance.logFile, "Attempting to reconnect to the auction...", clientInstance.Clock.Time, clientInstance.ID)
 			// Handle reconnection logic
 			log.Printf("Attempting to reconnect to the auction...")
-			time.Sleep(6 * time.Second) // Temp solution, as the backup server needs to assign itself as primary before we can make the call
-			newPrimary := findPrimary(knownAddresses, clientInstance.logFile)
+			time.Sleep(6 * time.Second)                                          // Temp solution, as the backup server needs to assign itself as primary before we can make the call
+			newPrimary, _ := findPrimary(knownAddresses, clientInstance.logFile) //We know client has already been initialized
 			conn, err := grpc.DialContext(context.Background(), newPrimary, grpc.WithInsecure(), grpc.WithBlock())
 			if err != nil {
 				log.Fatalf("Failed to reconnect to new primary: %v", err)
@@ -185,7 +184,7 @@ func readInput() {
 			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Sending a bid to the server of amount %d", bid), clientInstance.Clock.Time, clientInstance.ID)
 			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
 
-			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
+			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.Time})
 
 			if err != nil {
 				log.Printf("Error sending bid: %v", err)
@@ -232,7 +231,7 @@ func getResult() {
 	}
 }
 
-func findPrimary(knownAddresses []string, logFile *log.Logger) string {
+func findPrimary(knownAddresses []string, logFile *log.Logger) (string, int32) {
 	retryInterval := 1 * time.Second
 	maxRetries := 10
 
@@ -246,26 +245,30 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 			var resp *pb.PrimaryResponse
 			client := pb.NewAuctionServiceClient(conn)
 			if CheckZeroInitialized(&clientInstance) {
-				logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
-				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+				logs.WriteToLog(logFile, "Attempting to get primary", 0, -1)
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 0})
 			} else {
 				clientInstance.Clock.Step()
 				logs.WriteToLog(logFile, "Attempting to get primary", clientInstance.Clock.Time, clientInstance.ID)
-				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: clientInstance.Clock.Time})
 			}
 			conn.Close()
 
 			if err == nil && resp != nil {
 				log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
 				if CheckZeroInitialized(&clientInstance) {
-					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
+					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp, -1)
 				} else {
 					clientInstance.Clock.ReceiveEvent(resp.Timestamp)
-					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
+					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp, -1)
 				}
 				// Verify the primary is truly alive by testing a heartbeat
 				if verifyPrimary(resp.Address, logFile) {
-					return resp.Address
+					if CheckZeroInitialized(&clientInstance) {
+						return resp.Address, resp.Timestamp + 1
+
+					}
+					return resp.Address, clientInstance.Clock.Time
 				}
 			}
 
@@ -277,7 +280,7 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 	}
 
 	log.Fatalf("Failed to discover primary server after %d retries.", maxRetries)
-	return ""
+	return "", 0
 }
 
 func verifyPrimary(address string, logFile *log.Logger) bool {
