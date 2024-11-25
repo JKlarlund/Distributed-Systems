@@ -162,7 +162,6 @@ func readInput() {
 		reader := bufio.NewReader(os.Stdin)
 		message, err := reader.ReadString('\n')
 		if err != nil {
-			log.Printf("Error reading input: %v", err)
 			continue
 		}
 		message = strings.TrimSpace(message)
