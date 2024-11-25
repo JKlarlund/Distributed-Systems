@@ -116,8 +116,6 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			}
 			logs.WriteToLog(clientInstance.logFile, "Attempting to reconnect to the auction...", clientInstance.Clock.Time, clientInstance.ID)
 			// Handle reconnection logic
-			//log.Printf("Attempting to reconnect to the auction...")
-			//time.Sleep(6 * time.Second) // Temp solution, as the backup server needs to assign itself as primary before we can make the call
 			newPrimary := findPrimary(knownAddresses, clientInstance.logFile)
 			conn, err := grpc.DialContext(context.Background(), newPrimary, grpc.WithInsecure(), grpc.WithBlock())
 			if err != nil {
