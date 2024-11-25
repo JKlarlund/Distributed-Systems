@@ -130,6 +130,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 		s.auctionMutex.Lock()
 		if _, exists := s.bidders[msg.UserID]; exists {
 			delete(s.bidders, msg.UserID)
+			s.Clock.Step()
 			log.Printf("User %d has been removed from the auction at lamport time: %d", msg.UserID, s.Clock.Time)
 		}
 		s.auctionMutex.Unlock()
@@ -138,6 +139,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 }
 
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
+	s.Clock.Step()
 	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, s.Clock.Time)
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
@@ -158,6 +160,7 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 }
 
 func (s *Server) broadcastMessage(message pb.AuctionMessage) {
+	s.Clock.Step()
 	log.Printf("Broadcasting a message to all users")
 	for userID, bidder := range s.bidders {
 		if bidder != nil && bidder.Stream != nil {
@@ -238,6 +241,7 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 }
 
 func (s *Server) setUpAuction() {
+	s.Clock.Step()
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
 
@@ -259,6 +263,7 @@ func (s *Server) startAuctionTimer() {
 	for s.remainingTime != 0 {
 		time.Sleep(time.Second)
 		s.remainingTime--
+		s.Clock.Step()
 	}
 	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
@@ -348,11 +353,11 @@ func (s *Server) monitorPrimary() {
 		} else {
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
 			if resp.AuctionIsActive {
+				s.Clock.ReceiveEvent(resp.LamportClock)
 				s.currentHighestBidder = resp.CurrentHighestBidder
 				s.currentHighestBid = resp.CurrentHighestBid
 				s.remainingTime = resp.RemainingTime
 				s.auctionIsActive = resp.AuctionIsActive
-				s.Clock.Time = resp.LamportClock
 			}
 		}
 	}
