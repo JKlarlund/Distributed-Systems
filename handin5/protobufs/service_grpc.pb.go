@@ -38,7 +38,7 @@ type AuctionServiceClient interface {
 	Join(ctx context.Context, in *JoinRequest, opts ...grpc.CallOption) (*JoinResponse, error)
 	Leave(ctx context.Context, in *LeaveRequest, opts ...grpc.CallOption) (*LeaveResponse, error)
 	SendHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	GetPrimary(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PrimaryResponse, error)
+	GetPrimary(ctx context.Context, in *PrimaryRequest, opts ...grpc.CallOption) (*PrimaryResponse, error)
 }
 
 type auctionServiceClient struct {
@@ -112,7 +112,7 @@ func (c *auctionServiceClient) SendHeartbeat(ctx context.Context, in *HeartbeatR
 	return out, nil
 }
 
-func (c *auctionServiceClient) GetPrimary(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PrimaryResponse, error) {
+func (c *auctionServiceClient) GetPrimary(ctx context.Context, in *PrimaryRequest, opts ...grpc.CallOption) (*PrimaryResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PrimaryResponse)
 	err := c.cc.Invoke(ctx, AuctionService_GetPrimary_FullMethodName, in, out, cOpts...)
@@ -132,7 +132,7 @@ type AuctionServiceServer interface {
 	Join(context.Context, *JoinRequest) (*JoinResponse, error)
 	Leave(context.Context, *LeaveRequest) (*LeaveResponse, error)
 	SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	GetPrimary(context.Context, *Empty) (*PrimaryResponse, error)
+	GetPrimary(context.Context, *PrimaryRequest) (*PrimaryResponse, error)
 	mustEmbedUnimplementedAuctionServiceServer()
 }
 
@@ -161,7 +161,7 @@ func (UnimplementedAuctionServiceServer) Leave(context.Context, *LeaveRequest) (
 func (UnimplementedAuctionServiceServer) SendHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendHeartbeat not implemented")
 }
-func (UnimplementedAuctionServiceServer) GetPrimary(context.Context, *Empty) (*PrimaryResponse, error) {
+func (UnimplementedAuctionServiceServer) GetPrimary(context.Context, *PrimaryRequest) (*PrimaryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPrimary not implemented")
 }
 func (UnimplementedAuctionServiceServer) mustEmbedUnimplementedAuctionServiceServer() {}
@@ -283,7 +283,7 @@ func _AuctionService_SendHeartbeat_Handler(srv interface{}, ctx context.Context,
 }
 
 func _AuctionService_GetPrimary_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
+	in := new(PrimaryRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func _AuctionService_GetPrimary_Handler(srv interface{}, ctx context.Context, de
 		FullMethod: AuctionService_GetPrimary_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AuctionServiceServer).GetPrimary(ctx, req.(*Empty))
+		return srv.(AuctionServiceServer).GetPrimary(ctx, req.(*PrimaryRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

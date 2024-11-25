@@ -279,12 +279,14 @@ func (s *Server) startAuctionTimer() {
 	s.auctionIsActive = false
 }
 
-func (s *Server) GetPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResponse, error) {
+func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.PrimaryResponse, error) {
+	s.Clock.ReceiveEvent(req.Timestamp)
 	if s.isPrimary {
 		log.Println("getPrimary called: This server is the primary.")
 		return &pb.PrimaryResponse{
 			Address:       s.selfAddress,
 			StatusMessage: "This is the primary",
+			Timestamp:     s.Clock.SendEvent(),
 		}, nil
 	}
 
@@ -292,6 +294,7 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.Empty) (*pb.PrimaryResp
 	return &pb.PrimaryResponse{
 		Address:       s.primaryAddress,
 		StatusMessage: "Redirect to primary",
+		Timestamp:     s.Clock.SendEvent(),
 	}, nil
 }
 

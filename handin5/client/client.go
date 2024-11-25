@@ -199,7 +199,7 @@ func findPrimary(knownAddresses []string) string {
 			}
 
 			client := pb.NewAuctionServiceClient(conn)
-			resp, err := client.GetPrimary(context.Background(), &pb.Empty{})
+			resp, err := client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
 			conn.Close()
 
 			if err == nil && resp != nil {
@@ -235,7 +235,7 @@ func verifyPrimary(address string) bool {
 	defer cancel()
 
 	_, err = client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
-		Timestamp: int32(time.Now().Unix()),
+		Timestamp: 2,
 	})
 
 	if err != nil {
