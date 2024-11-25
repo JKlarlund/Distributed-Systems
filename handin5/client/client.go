@@ -37,35 +37,44 @@ func main() {
 		log.Fatalf("User failed connecting to auction: %v", err)
 	}
 	defer conn.Close()
+	clientClock := Clock.InitializeLClock(0)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Printf("Trying to connect to the auction at lamport: %v", 0)
-	logs.WriteToLog(logFile, "Trying to connect to the auction", 0, -1) //No user ID yet.
+	log.Printf("Trying to connect to the auction at lamport: %v", clientClock.Time)
+	logs.WriteToLog(logFile, "Trying to connect to the auction", clientClock.Time, -1) //No user ID yet.
 	client = pb.NewAuctionServiceClient(conn)
-	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
+	clientClock.Step()
+	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: clientClock.Time})
 	if err != nil {
 		log.Fatalf("User failed to join the AuctionStream: %v", err)
 	}
-
-	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2), logFile: logFile}
-	clientInstance.Clock.ReceiveEvent(response.Timestamp)
+	clientClock.ReceiveEvent(response.Timestamp)
+	clientInstance = Client{ID: response.UserID, Clock: clientClock, logFile: logFile}
 	//logs.RenameLogger("Client"+strconv.Itoa(os.Getpid()), "Client - "+strconv.Itoa(int(response.UserID)))
 	logs.WriteToLog(clientInstance.logFile, "Received join confirmation from server", clientInstance.Clock.Time, clientInstance.ID)
 
+	clientInstance.Clock.Step()
+	logs.WriteToLog(clientInstance.logFile, "Attempting to open stream", clientInstance.Clock.Time, clientInstance.ID)
+
 	stream, err := client.AuctionStream(context.Background())
 	if err != nil {
+		clientInstance.Clock.Step()
 		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to open AuctionStream: %v", err), clientInstance.Clock.Time, clientInstance.ID)
 		log.Fatalf("Failed to open AuctionStream: %v", err)
 	}
 
+	clientInstance.Clock.Step()
+	logs.WriteToLog(clientInstance.logFile, "Attempting to send initial connection message", clientInstance.Clock.Time, clientInstance.ID)
+
 	err = stream.Send(&pb.AuctionMessage{
 		UserID:    clientInstance.ID,
-		Timestamp: clientInstance.Clock.SendEvent(),
+		Timestamp: clientInstance.Clock.Time,
 		Message:   "Initial connection message",
 	})
 	if err != nil {
+		clientInstance.Clock.Step()
 		log.Printf("Error sending initial message: %v", err)
 		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Error sending initial message: %v", err), clientInstance.Clock.Time, clientInstance.ID)
 
@@ -76,8 +85,12 @@ func main() {
 
 	<-sigs
 
-	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
+	clientInstance.Clock.Step()
+	logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Sending leave message"), clientInstance.Clock.Time, clientInstance.ID)
+
+	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID, Timestamp: clientInstance.Clock.Time})
 	if err != nil {
+		clientInstance.Clock.Step()
 		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
 		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("User failed to leave the AuctionStream", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
 
@@ -92,14 +105,14 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 	for {
 		in, err := stream.Recv()
 		if err != nil {
+			clientInstance.Clock.Step()
 			if err == io.EOF {
 				log.Printf("Server closed the stream.")
-				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("User successfully left the auction!", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
-
+				logs.WriteToLog(clientInstance.logFile, "Server closed the stream.", clientInstance.Clock.Time, clientInstance.ID)
 				return
 			}
 			log.Printf("Error while receiving message: %v", err)
-
+			logs.WriteToLog(clientInstance.logFile, "Attempting to reconnect to the auction...", clientInstance.Clock.Time, clientInstance.ID)
 			// Handle reconnection logic
 			log.Printf("Attempting to reconnect to the auction...")
 			time.Sleep(6 * time.Second) // Temp solution, as the backup server needs to assign itself as primary before we can make the call
@@ -107,13 +120,12 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			conn, err := grpc.DialContext(context.Background(), newPrimary, grpc.WithInsecure(), grpc.WithBlock())
 			if err != nil {
 				log.Fatalf("Failed to reconnect to new primary: %v", err)
-				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to reconnect to new primary: %v", err), clientInstance.Clock.Time, clientInstance.ID)
-
 			}
 			defer conn.Close()
 
 			client = pb.NewAuctionServiceClient(conn)
 			stream, err = client.AuctionStream(context.Background())
+			clientInstance.Clock.Step()
 			if err != nil {
 				log.Fatalf("Failed to reconnect AuctionStream: %v", err)
 				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to reconnect AuctionStream: %v", err), clientInstance.Clock.Time, clientInstance.ID)
@@ -123,11 +135,12 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Reconnected to new primary at: %s", newPrimary), clientInstance.Clock.Time, clientInstance.ID)
 
 			// Resend initial message after reconnecting
+			clientInstance.Clock.Step()
 			logs.WriteToLog(clientInstance.logFile, "Resending initial message", clientInstance.Clock.Time+1, clientInstance.ID)
 
 			err = stream.Send(&pb.AuctionMessage{
 				UserID:    clientInstance.ID,
-				Timestamp: clientInstance.Clock.SendEvent(),
+				Timestamp: clientInstance.Clock.Time,
 				Message:   "Reconnection message",
 			})
 			if err != nil {
@@ -138,8 +151,7 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 		// Process the incoming message
 		if in != nil {
 			clientInstance.Clock.ReceiveEvent(in.Timestamp)
-			logs.WriteToLog(clientInstance.logFile, "Received message", clientInstance.Clock.Time, clientInstance.ID)
-
+			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Received message %s", in.Message), clientInstance.Clock.Time, clientInstance.ID)
 			log.Printf("%v", in.Message)
 		}
 	}
@@ -169,21 +181,24 @@ func readInput() {
 				continue
 			}
 			bid := int32(bidInt)
-			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
-			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
+			clientInstance.Clock.Step()
 			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Sending a bid to the server of amount %d", bid), clientInstance.Clock.Time, clientInstance.ID)
+			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
+
+			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 
 			if err != nil {
 				log.Printf("Error sending bid: %v", err)
 				continue
 			}
 			clientInstance.Clock.ReceiveEvent(response.Timestamp)
+			logs.WriteToLog(clientInstance.logFile, "Received answer for bid request from server.", clientInstance.Clock.Time, clientInstance.ID)
+
 			if !response.Success {
 				log.Printf("Bid is too low!")
 				continue
 			}
 			log.Printf("Your bid of: %d was accepted! at lamport: %d", bidInt, clientInstance.Clock.Time)
-			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Your bid of: %d was accepted!", bid), clientInstance.Clock.Time, clientInstance.ID)
 
 		case "result":
 			getResult()
@@ -191,16 +206,17 @@ func readInput() {
 			log.Printf("result - To get the highest bid")
 			log.Printf("bid <amount> - To bid on the auction")
 		default:
-			log.Printf("Unknow command: %v, use 'help' to get a list of the commands", command)
+			log.Printf("Unknown command: %v, use 'help' to get a list of the commands", command)
 		}
 	}
 }
 
 func getResult() {
+	clientInstance.Clock.Step()
 	logs.WriteToLog(clientInstance.logFile, "Requesting current result from server", clientInstance.Clock.Time+1, clientInstance.ID)
 	response, err := client.Result(context.Background(), &pb.ResultRequest{
 		UserID:    clientInstance.ID,
-		Timestamp: clientInstance.Clock.SendEvent(),
+		Timestamp: clientInstance.Clock.Time,
 	})
 	if err != nil {
 		log.Printf("Getting the result caused an error: %v", err)
@@ -227,16 +243,28 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 				log.Printf("Failed to connect to server at %s: %v", address, err)
 				continue
 			}
-
+			var resp *pb.PrimaryResponse
 			client := pb.NewAuctionServiceClient(conn)
-			logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
-			resp, err := client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+			if CheckZeroInitialized(&clientInstance) {
+				clientInstance.Clock.Step()
+				logs.WriteToLog(logFile, "Attempting to get primary", clientInstance.Clock.Time, clientInstance.ID)
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+
+			} else {
+				logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+
+			}
 			conn.Close()
 
 			if err == nil && resp != nil {
 				log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
-				logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
-
+				if CheckZeroInitialized(&clientInstance) {
+					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
+				} else {
+					clientInstance.Clock.ReceiveEvent(resp.Timestamp)
+					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
+				}
 				// Verify the primary is truly alive by testing a heartbeat
 				if verifyPrimary(resp.Address, logFile) {
 					return resp.Address
@@ -267,13 +295,15 @@ func verifyPrimary(address string, logFile *log.Logger) bool {
 	defer cancel()
 
 	//Should we increment timestamps here?
-	if CheckZeroInitialized(&clientInstance) {
-		logs.WriteToLog(logFile, "Verifying primary", 2, clientInstance.ID) //Ikke helt sikker på hvorfor den her skal være 2.
-	} else {
-		logs.WriteToLog(logFile, "Verifying primary", clientInstance.Clock.Time, clientInstance.ID)
-	}
+	/*
+		if CheckZeroInitialized(&clientInstance) {
+			logs.WriteToLog(logFile, "Verifying primary", 2, -1) //Ikke helt sikker på hvorfor den her skal være 2.
+		} else {
+			logs.WriteToLog(logFile, "Verifying primary", clientInstance.Clock.Time, clientInstance.ID)
+		}
+	*/
 
-	response, err := client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
+	_, err = client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
 		Timestamp: 2,
 	})
 
@@ -285,14 +315,16 @@ func verifyPrimary(address string, logFile *log.Logger) bool {
 	/*
 		If it is zero initialized, we want to call receive event on whatever we get back from the server
 	*/
-	tempClock := Clock.InitializeLClock(2)
-	tempClock.ReceiveEvent(response.LamportClock)
+	/*
+		tempClock := Clock.InitializeLClock(2)
+		tempClock.ReceiveEvent(response.LamportClock)
 
-	if CheckZeroInitialized(&clientInstance) {
-		logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), tempClock.Time, clientInstance.ID) //Ikke helt sikker på hvorfor den her skal være 2.
-	} else {
-		logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), clientInstance.Clock.Time, clientInstance.ID)
-	}
+		if CheckZeroInitialized(&clientInstance) {
+			logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), tempClock.Time, clientInstance.ID) //Ikke helt sikker på hvorfor den her skal være 2.
+		} else {
+			logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), clientInstance.Clock.Time, clientInstance.ID)
+		}
+	*/
 
 	log.Printf("Primary at %s verified successfully.", address)
 	//logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Primary at %s verified successfully.", address), clientInstance.Clock.Time, clientInstance.ID)

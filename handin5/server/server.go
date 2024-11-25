@@ -76,6 +76,7 @@ func main() {
 	server := grpc.NewServer()
 	pb.RegisterAuctionServiceServer(server, s)
 
+	s.Clock.Step()
 	// Start gRPC server
 	go func() {
 		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -83,10 +84,10 @@ func main() {
 			log.Fatalf("Failed to listen on port %d: %v", *port, err)
 		}
 		log.Printf("Server is listening on port: %d", *port)
-		logs.WriteToServerLog(logFile, fmt.Sprintf("Server is listening on port: %d", *port), 0)
+		logs.WriteToServerLog(logFile, fmt.Sprintf("Server is listening on port: %d", *port), s.Clock.Time)
 
 		if err := server.Serve(listener); err != nil {
-			logs.WriteToServerLog(logFile, fmt.Sprintf("Failed to serve: %v", err), 0)
+			logs.WriteToServerLog(logFile, fmt.Sprintf("Failed to serve: %v", err), s.Clock.Time)
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
@@ -110,6 +111,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	s.auctionMutex.Lock()
 	user, exists := s.bidders[msg.UserID]
 	if !exists || user == nil {
+		s.Clock.Step()
 		log.Printf("Registering new user %d for the stream at lamport time: %d", msg.UserID, s.Clock.Time)
 		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Registering new user %d", msg.UserID), s.Clock.Time)
 		user = &Bidder{}
@@ -125,6 +127,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
+			s.Clock.Step()
 			if err == io.EOF {
 				log.Printf("Stream closed for user with error: %v", err)
 				logs.WriteToServerLog(s.logFile, fmt.Sprintf("Stream closed for user with error: %v", err), s.Clock.Time)
@@ -277,7 +280,6 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 
 func (s *Server) setUpAuction() {
 	s.Clock.Step()
-	logs.WriteToServerLog(s.logFile, "Setting up auction", s.Clock.Time)
 
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
@@ -328,7 +330,7 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.Pr
 
 	if s.isPrimary {
 		log.Println("getPrimary called: This server is the primary.")
-		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Returning that node is primary", s.primaryAddress), s.Clock.Time+1)
+		//logs.WriteToServerLog(s.logFile, fmt.Sprintf("Returning that node is primary", s.primaryAddress), s.Clock.Time+1)
 
 		return &pb.PrimaryResponse{
 			Address:       s.selfAddress,
@@ -338,7 +340,7 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.Pr
 	}
 
 	log.Printf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress)
-	logs.WriteToServerLog(s.logFile, fmt.Sprintf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress), s.Clock.Time+1)
+	//logs.WriteToServerLog(s.logFile, fmt.Sprintf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress), s.Clock.Time+1)
 
 	return &pb.PrimaryResponse{
 		Address:       s.primaryAddress,
@@ -350,10 +352,12 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.Pr
 func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
 	if !s.isPrimary {
 		log.Println("Received heartbeat request, but this server is not the primary.")
-		logs.WriteToServerLog(s.logFile, "Received heartbeat request, but this server is not the primary.", s.Clock.Time)
+		//logs.WriteToServerLog(s.logFile, "Received heartbeat request, but this server is not the primary.", s.Clock.Time)
 
 		return &pb.HeartbeatResponse{IsAlive: false}, nil
 	}
+
+	//logs.WriteToServerLog(s.logFile, "Received heartbeat request", s.Clock.Time)
 
 	return &pb.HeartbeatResponse{
 		IsAlive:              true,
@@ -376,6 +380,7 @@ func (s *Server) monitorPrimary() {
 		time.Sleep(1 * time.Second) // Check for heartbeats every second
 
 		if time.Since(lastHeartbeat) > 5*time.Second { // Timeout of 5 seconds
+			s.Clock.Step()
 			log.Println("Primary server is unresponsive. Promoting self to primary.")
 			logs.WriteToServerLog(s.logFile, "Primary server is unresponsive. Promoting self to primary.", s.Clock.Time)
 
@@ -385,12 +390,12 @@ func (s *Server) monitorPrimary() {
 			// Initialize auction if it's active on the failed primary
 			if s.remainingTime > 0 {
 				log.Println("Continuing auction from backup server.")
-				logs.WriteToServerLog(s.logFile, "Continuing auction from backup server.", s.Clock.Time)
+				//logs.WriteToServerLog(s.logFile, "Continuing auction from backup server.", s.Clock.Time)
 
 				go s.setUpAuction() // Resume auction with remaining time
 			} else {
 				log.Println("No active auction to continue.")
-				logs.WriteToServerLog(s.logFile, "No active auction to continue.", s.Clock.Time)
+				//logs.WriteToServerLog(s.logFile, "No active auction to continue.", s.Clock.Time)
 
 			}
 			return
@@ -399,7 +404,7 @@ func (s *Server) monitorPrimary() {
 		conn, err := grpc.Dial(s.primaryAddress, grpc.WithInsecure())
 		if err != nil {
 			log.Printf("Failed to connect to primary for heartbeat check: %v", err)
-			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Failed to connect to primary for heartbeat check: %v", err), s.Clock.Time)
+			//logs.WriteToServerLog(s.logFile, fmt.Sprintf("Failed to connect to primary for heartbeat check: %v", err), s.Clock.Time)
 
 			continue
 		}
@@ -412,7 +417,7 @@ func (s *Server) monitorPrimary() {
 
 		if err != nil || !resp.IsAlive {
 			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
-			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Primary is unresponsive or failed heartbeat check: %v", err), s.Clock.Time)
+			//logs.WriteToServerLog(s.logFile, fmt.Sprintf("Primary is unresponsive or failed heartbeat check: %v", err), s.Clock.Time)
 
 		} else {
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
