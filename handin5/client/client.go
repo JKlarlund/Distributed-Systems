@@ -137,7 +137,7 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 
 			// Resend initial message after reconnecting
 			clientInstance.Clock.Step()
-			logs.WriteToLog(clientInstance.logFile, "Resending initial message", clientInstance.Clock.Time+1, clientInstance.ID)
+			logs.WriteToLog(clientInstance.logFile, "Resending initial message", clientInstance.Clock.Time, clientInstance.ID)
 
 			err = stream.Send(&pb.AuctionMessage{
 				UserID:    clientInstance.ID,
@@ -252,7 +252,7 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 			client := pb.NewAuctionServiceClient(conn)
 			if CheckZeroInitialized(&clientInstance) {
 				logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
-				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: int32(retries) + 1})
 			} else {
 				clientInstance.Clock.Step()
 				logs.WriteToLog(logFile, "Attempting to get primary", clientInstance.Clock.Time, clientInstance.ID)
@@ -265,7 +265,7 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
 				} else {
 					clientInstance.Clock.ReceiveEvent(resp.Timestamp)
-					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
+					logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), clientInstance.Clock.Time, clientInstance.ID)
 				}
 				// Verify the primary is truly alive by testing a heartbeat
 				if verifyPrimary(resp.Address, logFile) {
@@ -273,7 +273,12 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 				}
 			}
 		}
-		logs.WriteToLog(logFile, fmt.Sprintf("Retrying to find primary in %v...", retryInterval), clientInstance.Clock.Time, -1)
+		clientInstance.Clock.Step()
+		if !CheckZeroInitialized(&clientInstance) {
+			logs.WriteToLog(logFile, fmt.Sprintf("Retrying to find primary in %v...", retryInterval), clientInstance.Clock.Time, clientInstance.ID)
+		} else {
+			logs.WriteToLog(logFile, fmt.Sprintf("Retrying to find primary in %v...", retryInterval), 2, -1)
+		}
 		time.Sleep(retryInterval)
 	}
 

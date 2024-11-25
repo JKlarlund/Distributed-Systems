@@ -117,26 +117,20 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 		user = &Bidder{}
 		s.bidders[msg.UserID] = user
 	}
-	s.Clock.Step()
 	user.Stream = stream
 	s.auctionMutex.Unlock()
-
+	s.Clock.Step()
 	log.Printf("User %d is now connected to the stream at lamport time: %d", msg.UserID, s.Clock.Time)
 	logs.WriteToServerLog(s.logFile, fmt.Sprintf("User %d is now connected to the stream.", msg.UserID), s.Clock.Time)
 
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
-			s.Clock.Step()
 			if err == io.EOF {
 				log.Printf("Stream closed for user with error: %v", err)
-				logs.WriteToServerLog(s.logFile, fmt.Sprintf("Stream closed for user with error: %v", err), s.Clock.Time)
-
 				break
 			}
 			log.Printf("Error receiving message from user %v", err)
-			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Error receiving message from user %v", err), s.Clock.Time)
-
 			break
 		}
 		s.Clock.ReceiveEvent(msg.Timestamp)
@@ -328,7 +322,7 @@ func (s *Server) startAuctionTimer() {
 
 func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.PrimaryResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
-	logs.WriteToServerLog(s.logFile, "getPrimary called", s.Clock.Time)
+	//logs.WriteToServerLog(s.logFile, "getPrimary called", s.Clock.Time)
 
 	if s.isPrimary {
 		log.Println("getPrimary called: This server is the primary.")
