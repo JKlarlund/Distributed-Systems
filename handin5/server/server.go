@@ -314,7 +314,7 @@ func (s *Server) startAuctionTimer() {
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
 	logs.WriteToServerLog(s.logFile, "Auction has ended", s.Clock.Time)
 
-	message := fmt.Sprintf("User: %d won the auction with bid: %d at lamport: %d", s.currentHighestBidder, s.currentHighestBid, s.Clock.Time)
+	message := fmt.Sprintf("User: %d won the auction with bid: %d", s.currentHighestBidder, s.currentHighestBid)
 	s.broadcastMessage(pb.AuctionMessage{
 		Message:   message,
 		UserID:    s.currentHighestBidder,
