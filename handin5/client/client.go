@@ -187,25 +187,62 @@ func getResult() {
 }
 
 func findPrimary(knownAddresses []string) string {
-	for _, address := range knownAddresses {
-		conn, err := grpc.Dial(address, grpc.WithInsecure())
-		if err != nil {
-			log.Printf("Failed to connect to server at %s: %v", address, err)
-			continue
+	retryInterval := 1 * time.Second
+	maxRetries := 10
+
+	for retries := 0; retries < maxRetries; retries++ {
+		for _, address := range knownAddresses {
+			conn, err := grpc.Dial(address, grpc.WithInsecure())
+			if err != nil {
+				log.Printf("Failed to connect to server at %s: %v", address, err)
+				continue
+			}
+
+			client := pb.NewAuctionServiceClient(conn)
+			resp, err := client.GetPrimary(context.Background(), &pb.Empty{})
+			conn.Close()
+
+			if err == nil && resp != nil {
+				log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
+
+				// Verify the primary is truly alive by testing a heartbeat
+				if verifyPrimary(resp.Address) {
+					return resp.Address
+				}
+			}
+
+			log.Printf("Error calling GetPrimary on %s: %v", address, err)
 		}
 
-		client := pb.NewAuctionServiceClient(conn)
-		resp, err := client.GetPrimary(context.Background(), &pb.Empty{})
-		conn.Close()
-
-		if err == nil && resp != nil {
-			log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
-			return resp.Address
-		}
-
-		log.Printf("Error calling GetPrimary on %s: %v", address, err)
+		log.Printf("Retrying to find primary in %v...", retryInterval)
+		time.Sleep(retryInterval)
 	}
 
-	log.Fatalf("Failed to discover primary server.")
+	log.Fatalf("Failed to discover primary server after %d retries.", maxRetries)
 	return ""
+}
+
+func verifyPrimary(address string) bool {
+	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	if err != nil {
+		log.Printf("Failed to connect to verify primary at %s: %v", address, err)
+		return false
+	}
+	defer conn.Close()
+
+	client := pb.NewAuctionServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // Timeout to avoid hanging
+	defer cancel()
+
+	_, err = client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
+		Timestamp: int32(time.Now().Unix()),
+	})
+
+	if err != nil {
+		log.Printf("Failed to verify primary at %s: %v", address, err)
+		return false
+	}
+
+	log.Printf("Primary at %s verified successfully.", address)
+	return true
 }
