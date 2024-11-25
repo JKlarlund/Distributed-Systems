@@ -246,14 +246,12 @@ func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 			var resp *pb.PrimaryResponse
 			client := pb.NewAuctionServiceClient(conn)
 			if CheckZeroInitialized(&clientInstance) {
+				logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
+				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
+			} else {
 				clientInstance.Clock.Step()
 				logs.WriteToLog(logFile, "Attempting to get primary", clientInstance.Clock.Time, clientInstance.ID)
 				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
-
-			} else {
-				logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
-				resp, err = client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
-
 			}
 			conn.Close()
 
