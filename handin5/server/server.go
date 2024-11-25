@@ -281,9 +281,6 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 func (s *Server) setUpAuction() {
 	s.Clock.Step()
 
-	s.auctionMutex.Lock()
-	defer s.auctionMutex.Unlock()
-
 	if s.auctionIsActive {
 		log.Printf("Auction is already active!")
 		s.startAuctionTimer()
