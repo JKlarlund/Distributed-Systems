@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
+	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5/logs"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
 	"io"
@@ -31,6 +32,7 @@ type Server struct {
 	currentHighestBidder int32
 	remainingTime        int32
 	auctionIsActive      bool
+	logFile              *log.Logger
 }
 
 /*
@@ -44,10 +46,16 @@ func main() {
 	selfAddress := fmt.Sprintf("localhost:%d", *port)
 	primaryAddress := "localhost:1337"
 
+	//Create log file.
+	logFile := logs.InitServerLogger(*isPrimary)
+
 	if *isPrimary {
 		log.Printf("Starting primary server at %s", selfAddress)
+		logs.WriteToServerLog(logFile, fmt.Sprintf("Starting primary server at %s", selfAddress), 0)
 	} else {
 		log.Printf("Starting backup server at %s (Primary is %s)", selfAddress, primaryAddress)
+		logs.WriteToServerLog(logFile, fmt.Sprintf("Starting backup server at %s", selfAddress), 0)
+
 	}
 
 	id := 0
@@ -63,6 +71,7 @@ func main() {
 		selfAddress:     selfAddress,
 		primaryAddress:  primaryAddress,
 		isPrimary:       *isPrimary,
+		logFile:         logFile,
 	}
 	server := grpc.NewServer()
 	pb.RegisterAuctionServiceServer(server, s)
@@ -74,7 +83,10 @@ func main() {
 			log.Fatalf("Failed to listen on port %d: %v", *port, err)
 		}
 		log.Printf("Server is listening on port: %d", *port)
+		logs.WriteToServerLog(logFile, fmt.Sprintf("Server is listening on port: %d", *port), 0)
+
 		if err := server.Serve(listener); err != nil {
+			logs.WriteToServerLog(logFile, fmt.Sprintf("Failed to serve: %v", err), 0)
 			log.Fatalf("Failed to serve: %v", err)
 		}
 	}()
@@ -93,11 +105,13 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 
 	s.Clock.ReceiveEvent(msg.Timestamp)
 	log.Printf("First messages was received from the stream to establish a connection at lamport: %d", s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, "First messages was received from the stream to establish a connection", s.Clock.Time)
 
 	s.auctionMutex.Lock()
 	user, exists := s.bidders[msg.UserID]
 	if !exists || user == nil {
 		log.Printf("Registering new user %d for the stream at lamport time: %d", msg.UserID, s.Clock.Time)
+		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Registering new user %d", msg.UserID), s.Clock.Time)
 		user = &Bidder{}
 		s.bidders[msg.UserID] = user
 	}
@@ -106,19 +120,25 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 	s.auctionMutex.Unlock()
 
 	log.Printf("User %d is now connected to the stream at lamport time: %d", msg.UserID, s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("User %d is now connected to the stream.", msg.UserID), s.Clock.Time)
 
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF {
 				log.Printf("Stream closed for user with error: %v", err)
+				logs.WriteToServerLog(s.logFile, fmt.Sprintf("Stream closed for user with error: %v", err), s.Clock.Time)
+
 				break
 			}
 			log.Printf("Error receiving message from user %v", err)
+			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Error receiving message from user %v", err), s.Clock.Time)
+
 			break
 		}
 		s.Clock.ReceiveEvent(msg.Timestamp)
 		log.Printf("Received bid from user %d: %d at lamport time: %d", msg.UserID, msg.Bid, s.Clock.Time)
+		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Received bid from user %d: %d", msg.UserID, msg.Bid), s.Clock.Time)
 
 		// Broadcasting the bid to all users
 		s.broadcastBid(&pb.BidRequest{
@@ -132,6 +152,8 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 			delete(s.bidders, msg.UserID)
 			s.Clock.Step()
 			log.Printf("User %d has been removed from the auction at lamport time: %d", msg.UserID, s.Clock.Time)
+			logs.WriteToServerLog(s.logFile, fmt.Sprintf("User %d has been removed from the auction", msg.UserID), s.Clock.Time)
+
 		}
 		s.auctionMutex.Unlock()
 	}
@@ -141,6 +163,7 @@ func (s *Server) AuctionStream(stream pb.AuctionService_AuctionStreamServer) err
 func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 	s.Clock.Step()
 	broadcastMessage := fmt.Sprintf("User %d has bid: %d at lamport time: %d", bidRequest.BidderId, bidRequest.Amount, s.Clock.Time)
+
 	bid := pb.AuctionMessage{
 		Bid:       bidRequest.Amount,
 		Timestamp: s.Clock.SendEvent(),
@@ -151,9 +174,13 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 	for userID, bidder := range s.bidders {
 		if bidder != nil && bidder.Stream != nil && userID != bidRequest.BidderId {
 			log.Printf("Sending bid to user: %d", userID)
+			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Sending bid to user: %d", userID), s.Clock.Time)
+
 			err := bidder.Stream.Send(&bid)
 			if err != nil {
 				log.Printf("Error sending bid to user %d: %v", userID, err)
+				logs.WriteToServerLog(s.logFile, fmt.Sprintf("Error sending bid to user %d: %v", userID, err), s.Clock.Time)
+
 			}
 		}
 	}
@@ -162,11 +189,15 @@ func (s *Server) broadcastBid(bidRequest *pb.BidRequest) {
 func (s *Server) broadcastMessage(message pb.AuctionMessage) {
 	s.Clock.Step()
 	log.Printf("Broadcasting a message to all users")
+	logs.WriteToServerLog(s.logFile, "Broadcasting a message to all users", s.Clock.Time)
+
 	for userID, bidder := range s.bidders {
 		if bidder != nil && bidder.Stream != nil {
 			err := bidder.Stream.Send(&message)
 			if err != nil {
 				log.Printf("Error sending bid to user %d: %v", userID, err)
+				logs.WriteToServerLog(s.logFile, fmt.Sprintf("Error sending bid to user %d: %v", userID, err), s.Clock.Time)
+
 			}
 		}
 	}
@@ -174,6 +205,7 @@ func (s *Server) broadcastMessage(message pb.AuctionMessage) {
 
 func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("Received bid request from user %d: %d", req.BidderId, req.Amount), s.Clock.Time)
 
 	if !s.auctionIsActive {
 		go s.setUpAuction()
@@ -196,6 +228,7 @@ func (s *Server) Bid(ctx context.Context, req *pb.BidRequest) (*pb.BidResponse, 
 func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
 	log.Printf("Server has received a result request at lamport time: %d", s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, "Server has received a result request.", s.Clock.Time)
 
 	return &pb.ResultResponse{
 		AuctionEnded:  s.auctionIsActive,
@@ -207,6 +240,7 @@ func (s *Server) Result(ctx context.Context, req *pb.ResultRequest) (*pb.ResultR
 
 func (s *Server) Leave(ctx context.Context, req *pb.LeaveRequest) (*pb.LeaveResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("Received leave request from user %d", req.UserID), s.Clock.Time)
 
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
@@ -233,6 +267,7 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 	}
 
 	log.Printf("User %d has joined the auction at lamport time: %d", newUserID, s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("User %d has joined the auction", newUserID), s.Clock.Time)
 
 	return &pb.JoinResponse{
 		UserID:    newUserID,
@@ -242,6 +277,8 @@ func (s *Server) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinRespons
 
 func (s *Server) setUpAuction() {
 	s.Clock.Step()
+	logs.WriteToServerLog(s.logFile, "Setting up auction", s.Clock.Time)
+
 	s.auctionMutex.Lock()
 	defer s.auctionMutex.Unlock()
 
@@ -256,6 +293,8 @@ func (s *Server) setUpAuction() {
 	var timer int32 = 30
 	s.remainingTime = timer
 	log.Printf("The auction was started at lamport: %d", s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, "The auction was started", s.Clock.Time)
+
 	s.startAuctionTimer()
 }
 
@@ -264,9 +303,13 @@ func (s *Server) startAuctionTimer() {
 		time.Sleep(time.Second)
 		s.remainingTime--
 		s.Clock.Step()
+		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Auction has %d seconds remaining", s.remainingTime), s.Clock.Time)
+
 	}
 	s.Clock.Step()
 	log.Printf("Auction has ended at lamport time: %d", s.Clock.Time)
+	logs.WriteToServerLog(s.logFile, "Auction has ended", s.Clock.Time)
+
 	message := fmt.Sprintf("User: %d won the auction with bid: %d at lamport: %d", s.currentHighestBidder, s.currentHighestBid, s.Clock.Time)
 	s.broadcastMessage(pb.AuctionMessage{
 		Message:   message,
@@ -281,8 +324,12 @@ func (s *Server) startAuctionTimer() {
 
 func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.PrimaryResponse, error) {
 	s.Clock.ReceiveEvent(req.Timestamp)
+	logs.WriteToServerLog(s.logFile, "getPrimary called", s.Clock.Time)
+
 	if s.isPrimary {
 		log.Println("getPrimary called: This server is the primary.")
+		logs.WriteToServerLog(s.logFile, fmt.Sprintf("Returning that node is primary", s.primaryAddress), s.Clock.Time+1)
+
 		return &pb.PrimaryResponse{
 			Address:       s.selfAddress,
 			StatusMessage: "This is the primary",
@@ -291,6 +338,8 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.Pr
 	}
 
 	log.Printf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress)
+	logs.WriteToServerLog(s.logFile, fmt.Sprintf("getPrimary called: Redirecting to known primary at %s", s.primaryAddress), s.Clock.Time+1)
+
 	return &pb.PrimaryResponse{
 		Address:       s.primaryAddress,
 		StatusMessage: "Redirect to primary",
@@ -301,6 +350,8 @@ func (s *Server) GetPrimary(ctx context.Context, req *pb.PrimaryRequest) (*pb.Pr
 func (s *Server) SendHeartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
 	if !s.isPrimary {
 		log.Println("Received heartbeat request, but this server is not the primary.")
+		logs.WriteToServerLog(s.logFile, "Received heartbeat request, but this server is not the primary.", s.Clock.Time)
+
 		return &pb.HeartbeatResponse{IsAlive: false}, nil
 	}
 
@@ -326,15 +377,21 @@ func (s *Server) monitorPrimary() {
 
 		if time.Since(lastHeartbeat) > 5*time.Second { // Timeout of 5 seconds
 			log.Println("Primary server is unresponsive. Promoting self to primary.")
+			logs.WriteToServerLog(s.logFile, "Primary server is unresponsive. Promoting self to primary.", s.Clock.Time)
+
 			s.isPrimary = true
 			s.primaryAddress = s.selfAddress
 
 			// Initialize auction if it's active on the failed primary
 			if s.remainingTime > 0 {
 				log.Println("Continuing auction from backup server.")
+				logs.WriteToServerLog(s.logFile, "Continuing auction from backup server.", s.Clock.Time)
+
 				go s.setUpAuction() // Resume auction with remaining time
 			} else {
 				log.Println("No active auction to continue.")
+				logs.WriteToServerLog(s.logFile, "No active auction to continue.", s.Clock.Time)
+
 			}
 			return
 		}
@@ -342,6 +399,8 @@ func (s *Server) monitorPrimary() {
 		conn, err := grpc.Dial(s.primaryAddress, grpc.WithInsecure())
 		if err != nil {
 			log.Printf("Failed to connect to primary for heartbeat check: %v", err)
+			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Failed to connect to primary for heartbeat check: %v", err), s.Clock.Time)
+
 			continue
 		}
 
@@ -353,6 +412,8 @@ func (s *Server) monitorPrimary() {
 
 		if err != nil || !resp.IsAlive {
 			log.Printf("Primary is unresponsive or failed heartbeat check: %v", err)
+			logs.WriteToServerLog(s.logFile, fmt.Sprintf("Primary is unresponsive or failed heartbeat check: %v", err), s.Clock.Time)
+
 		} else {
 			lastHeartbeat = time.Now() // Update the last heartbeat timestamp
 			if resp.AuctionIsActive {

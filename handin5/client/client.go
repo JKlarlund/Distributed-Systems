@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	Clock "github.com/JKlarlund/Distributed-Systems/tree/main/handin5"
+	"github.com/JKlarlund/Distributed-Systems/tree/main/handin5/logs"
 	pb "github.com/JKlarlund/Distributed-Systems/tree/main/handin5/protobufs"
 	"google.golang.org/grpc"
 	"io"
@@ -17,16 +19,18 @@ import (
 )
 
 type Client struct {
-	Clock *Clock.LClock
-	ID    int32
+	Clock   *Clock.LClock
+	ID      int32
+	logFile *log.Logger
 }
 
 var clientInstance Client
 var client pb.AuctionServiceClient
 
 func main() {
+	logFile := logs.InitLogger("Client" + strconv.Itoa(os.Getpid()))
 	knownAddresses := []string{"localhost:1337", "localhost:1338"} // List of known servers
-	primaryAddress := findPrimary(knownAddresses)                  // Find the current primary server
+	primaryAddress := findPrimary(knownAddresses, logFile)         // Find the current primary server
 
 	conn, err := grpc.DialContext(context.Background(), primaryAddress, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -38,18 +42,21 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	log.Printf("Trying to connect to the auction at lamport: %v", 0)
-
+	logs.WriteToLog(logFile, "Trying to connect to the auction", 0, -1) //No user ID yet.
 	client = pb.NewAuctionServiceClient(conn)
-
 	response, err := client.Join(context.Background(), &pb.JoinRequest{Timestamp: 1})
 	if err != nil {
 		log.Fatalf("User failed to join the AuctionStream: %v", err)
 	}
-	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2)}
+
+	clientInstance = Client{ID: response.UserID, Clock: Clock.InitializeLClock(2), logFile: logFile}
 	clientInstance.Clock.ReceiveEvent(response.Timestamp)
+	//logs.RenameLogger("Client"+strconv.Itoa(os.Getpid()), "Client - "+strconv.Itoa(int(response.UserID)))
+	logs.WriteToLog(clientInstance.logFile, "Received join confirmation from server", clientInstance.Clock.Time, clientInstance.ID)
 
 	stream, err := client.AuctionStream(context.Background())
 	if err != nil {
+		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to open AuctionStream: %v", err), clientInstance.Clock.Time, clientInstance.ID)
 		log.Fatalf("Failed to open AuctionStream: %v", err)
 	}
 
@@ -60,6 +67,8 @@ func main() {
 	})
 	if err != nil {
 		log.Printf("Error sending initial message: %v", err)
+		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Error sending initial message: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 	}
 
 	go listenToStream(stream, knownAddresses)
@@ -70,9 +79,12 @@ func main() {
 	LeaveResponse, err := client.Leave(context.Background(), &pb.LeaveRequest{UserID: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 	if err != nil {
 		log.Printf("User: %d failed to leave the AuctionStream", clientInstance.ID)
+		logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("User failed to leave the AuctionStream", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 	}
 	clientInstance.Clock.ReceiveEvent(LeaveResponse.Timestamp)
 	stream.CloseSend()
+	logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("User successfully left the auction!", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
 	log.Printf("User: %d successfully left the auction!", clientInstance.ID)
 }
 
@@ -82,6 +94,8 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 		if err != nil {
 			if err == io.EOF {
 				log.Printf("Server closed the stream.")
+				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("User successfully left the auction!", clientInstance.ID), clientInstance.Clock.Time, clientInstance.ID)
+
 				return
 			}
 			log.Printf("Error while receiving message: %v", err)
@@ -89,10 +103,12 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			// Handle reconnection logic
 			log.Printf("Attempting to reconnect to the auction...")
 			time.Sleep(6 * time.Second) // Temp solution, as the backup server needs to assign itself as primary before we can make the call
-			newPrimary := findPrimary(knownAddresses)
+			newPrimary := findPrimary(knownAddresses, clientInstance.logFile)
 			conn, err := grpc.DialContext(context.Background(), newPrimary, grpc.WithInsecure(), grpc.WithBlock())
 			if err != nil {
 				log.Fatalf("Failed to reconnect to new primary: %v", err)
+				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to reconnect to new primary: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 			}
 			defer conn.Close()
 
@@ -100,10 +116,15 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 			stream, err = client.AuctionStream(context.Background())
 			if err != nil {
 				log.Fatalf("Failed to reconnect AuctionStream: %v", err)
+				logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Failed to reconnect AuctionStream: %v", err), clientInstance.Clock.Time, clientInstance.ID)
+
 			}
 			log.Printf("Reconnected to new primary at: %s", newPrimary)
+			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Reconnected to new primary at: %s", newPrimary), clientInstance.Clock.Time, clientInstance.ID)
 
 			// Resend initial message after reconnecting
+			logs.WriteToLog(clientInstance.logFile, "Resending initial message", clientInstance.Clock.Time+1, clientInstance.ID)
+
 			err = stream.Send(&pb.AuctionMessage{
 				UserID:    clientInstance.ID,
 				Timestamp: clientInstance.Clock.SendEvent(),
@@ -117,6 +138,8 @@ func listenToStream(stream pb.AuctionService_AuctionStreamClient, knownAddresses
 		// Process the incoming message
 		if in != nil {
 			clientInstance.Clock.ReceiveEvent(in.Timestamp)
+			logs.WriteToLog(clientInstance.logFile, "Received message", clientInstance.Clock.Time, clientInstance.ID)
+
 			log.Printf("%v", in.Message)
 		}
 	}
@@ -148,6 +171,8 @@ func readInput() {
 			bid := int32(bidInt)
 			response, err := client.Bid(context.Background(), &pb.BidRequest{Amount: bid, BidderId: clientInstance.ID, Timestamp: clientInstance.Clock.SendEvent()})
 			log.Printf("Sending a bid to the server at lamport time: %d", clientInstance.Clock.Time)
+			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Sending a bid to the server of amount %d", bid), clientInstance.Clock.Time, clientInstance.ID)
+
 			if err != nil {
 				log.Printf("Error sending bid: %v", err)
 				continue
@@ -158,6 +183,8 @@ func readInput() {
 				continue
 			}
 			log.Printf("Your bid of: %d was accepted! at lamport: %d", bidInt, clientInstance.Clock.Time)
+			logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Your bid of: %d was accepted!", bid), clientInstance.Clock.Time, clientInstance.ID)
+
 		case "result":
 			getResult()
 		case "help":
@@ -170,6 +197,7 @@ func readInput() {
 }
 
 func getResult() {
+	logs.WriteToLog(clientInstance.logFile, "Requesting current result from server", clientInstance.Clock.Time+1, clientInstance.ID)
 	response, err := client.Result(context.Background(), &pb.ResultRequest{
 		UserID:    clientInstance.ID,
 		Timestamp: clientInstance.Clock.SendEvent(),
@@ -179,6 +207,8 @@ func getResult() {
 		return
 	}
 	clientInstance.Clock.ReceiveEvent(response.Timestamp)
+	logs.WriteToLog(clientInstance.logFile, "Received current result from server", clientInstance.Clock.Time, clientInstance.ID)
+
 	if response.AuctionEnded {
 		log.Printf("Highest bid was: %d by user: %d", response.HighestBid, response.HighestBidder)
 	} else {
@@ -186,7 +216,7 @@ func getResult() {
 	}
 }
 
-func findPrimary(knownAddresses []string) string {
+func findPrimary(knownAddresses []string, logFile *log.Logger) string {
 	retryInterval := 1 * time.Second
 	maxRetries := 10
 
@@ -199,14 +229,16 @@ func findPrimary(knownAddresses []string) string {
 			}
 
 			client := pb.NewAuctionServiceClient(conn)
+			logs.WriteToLog(logFile, "Attempting to get primary", 1, -1)
 			resp, err := client.GetPrimary(context.Background(), &pb.PrimaryRequest{Timestamp: 1})
 			conn.Close()
 
 			if err == nil && resp != nil {
 				log.Printf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage)
+				logs.WriteToLog(logFile, fmt.Sprintf("Primary server found at %s (%s)", resp.Address, resp.StatusMessage), resp.Timestamp+1, -1)
 
 				// Verify the primary is truly alive by testing a heartbeat
-				if verifyPrimary(resp.Address) {
+				if verifyPrimary(resp.Address, logFile) {
 					return resp.Address
 				}
 			}
@@ -222,7 +254,7 @@ func findPrimary(knownAddresses []string) string {
 	return ""
 }
 
-func verifyPrimary(address string) bool {
+func verifyPrimary(address string, logFile *log.Logger) bool {
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Printf("Failed to connect to verify primary at %s: %v", address, err)
@@ -234,7 +266,14 @@ func verifyPrimary(address string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // Timeout to avoid hanging
 	defer cancel()
 
-	_, err = client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
+	//Should we increment timestamps here?
+	if CheckZeroInitialized(&clientInstance) {
+		logs.WriteToLog(logFile, "Verifying primary", 2, clientInstance.ID) //Ikke helt sikker på hvorfor den her skal være 2.
+	} else {
+		logs.WriteToLog(logFile, "Verifying primary", clientInstance.Clock.Time, clientInstance.ID)
+	}
+
+	response, err := client.SendHeartbeat(ctx, &pb.HeartbeatRequest{
 		Timestamp: 2,
 	})
 
@@ -243,6 +282,26 @@ func verifyPrimary(address string) bool {
 		return false
 	}
 
+	/*
+		If it is zero initialized, we want to call receive event on whatever we get back from the server
+	*/
+	tempClock := Clock.InitializeLClock(2)
+	tempClock.ReceiveEvent(response.LamportClock)
+
+	if CheckZeroInitialized(&clientInstance) {
+		logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), tempClock.Time, clientInstance.ID) //Ikke helt sikker på hvorfor den her skal være 2.
+	} else {
+		logs.WriteToLog(logFile, fmt.Sprintf("Primary at %s verified successfully.", address), clientInstance.Clock.Time, clientInstance.ID)
+	}
+
 	log.Printf("Primary at %s verified successfully.", address)
+	//logs.WriteToLog(clientInstance.logFile, fmt.Sprintf("Primary at %s verified successfully.", address), clientInstance.Clock.Time, clientInstance.ID)
+
 	return true
+}
+func CheckZeroInitialized(c *Client) bool {
+	if c == nil {
+		return true
+	}
+	return c.logFile == nil || c.Clock == nil
 }
